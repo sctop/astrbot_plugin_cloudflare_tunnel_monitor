@@ -47,8 +47,11 @@ class TunnelStatusModel(pydantic.BaseModel):
     @classmethod
     def get_default_values(cls, uuid: str) -> "TunnelStatusModel":
         """仅应作为临时措施时调用（如添加新tunnel时）"""
-        return cls(id=uuid, name='None', status='down', tun_type="cfd_tunnel", conns_active_at=None,
-                   conns_inactive_at=None, created_at=datetime.datetime.now(), replica_nums=0, conns_nums=0,
+        return cls(id=uuid, name='None', status='down', tun_type="cfd_tunnel",
+                   conns_active_at=datetime.datetime.now(),
+                   conns_inactive_at=datetime.datetime.now(),
+                   created_at=datetime.datetime.now(),
+                   replica_nums=0, conns_nums=0,
                    conns_edge_dc=[])
 
     @classmethod
