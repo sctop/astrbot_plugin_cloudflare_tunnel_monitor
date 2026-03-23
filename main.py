@@ -533,16 +533,30 @@ class MyPlugin(Star):
         self.data_basepath = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
         self.data_notification_path = os.path.join(self.data_basepath, 'notification_db.json')
 
+        self.has_initialized = False
+
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
-        self.cf_client = Cloudflare(api_token=self.config.get('api_token'),
+        if self.config.get('api_token') == '':
+            logger.error('请首先配置 `api_token` ，然后重启插件使用！')
+            return
+        self.has_initialized = True
+
+        if self.config.get('http_proxy') != '':
+            self.cf_client = Cloudflare(api_token=self.config.get('api_token'),
                                     http_client=DefaultHttpxClient(proxy=self.config.get('http_proxy')))
+        else:
+            self.cf_client = Cloudflare(api_token=self.config.get('api_token'))
 
         self.notification_sender = NotificationSender(self.send_message_callback, self.config.get('time_timezone'))
         self.notification_manager = NotificationManager(self.cf_client, self.config.get('account_id'),
                                                         self.data_notification_path,
                                                         self.config.get('polling_time'),
                                                         sender=self.notification_sender)
+
+    def __check_has_inited(self):
+        if not self.has_initialized:
+            raise RuntimeError('Hasn\'t been initialized!')
 
     @filter.command_group("cft")
     async def cft(self):
@@ -552,6 +566,8 @@ class MyPlugin(Star):
     @cft.command("add")
     async def add_tunnel(self, event: AstrMessageEvent, name: str):
         try:
+            self.__check_has_inited()
+
             await self.notification_manager.add_relation(event.unified_msg_origin, name)
             yield event.plain_result(f'✅ 添加 `{name}` 成功！')
         except Exception as e:
@@ -561,6 +577,8 @@ class MyPlugin(Star):
     @cft.command("remove")
     async def remove_tunnel(self, event: AstrMessageEvent, name: str):
         try:
+            self.__check_has_inited()
+
             await self.notification_manager.remove_relation(event.unified_msg_origin, name)
             yield event.plain_result(f'✅ 移除 `{name}` 成功！')
         except Exception as e:
@@ -569,6 +587,8 @@ class MyPlugin(Star):
     @cft.command("list")
     async def list(self, event: AstrMessageEvent):
         try:
+            self.__check_has_inited()
+
             curr_list = self.notification_manager.umo_to_tunnel.get(event.unified_msg_origin, [])
             curr_tunnels = [self.notification_manager.tunnel_status_cache[i] for i in curr_list]
 
@@ -588,6 +608,8 @@ class MyPlugin(Star):
     async def list_all(self, event: AstrMessageEvent):
         """这里指的是列出所有正在监控的 Tunnels"""
         try:
+            self.__check_has_inited()
+
             msg = MessageChain().message('🔍 以下是全局正在监测的 Tunnels 信息\n')
             msg = self.notification_sender.passive_append_tunnel_listing(
                 list(self.notification_manager.tunnel_status_cache.values()), msg)
@@ -618,6 +640,8 @@ class MyPlugin(Star):
     async def list_api_all(self, event: AstrMessageEvent):
         """这里指的是列出整个 API Key 下面都可以用于监测的 Tunnels"""
         try:
+            self.__check_has_inited()
+
             all_tunnels = self.notification_manager._list_all_tunnels()
             curr_time = self.notification_sender.get_current_time()
 
@@ -633,6 +657,8 @@ class MyPlugin(Star):
     async def clear(self, event: AstrMessageEvent):
         """将当前聊天的所有tunnel监听任务给爆了"""
         try:
+            self.__check_has_inited()
+
             await self.notification_manager.remove_umo(event.unified_msg_origin)
             yield event.plain_result(f'✅ 清空当前 `{event.unified_msg_origin}` 的所有监控任务成功！')
         except Exception as e:
@@ -643,6 +669,8 @@ class MyPlugin(Star):
     async def force_update(self, event: AstrMessageEvent):
         """强制调用更新函数"""
         try:
+            self.__check_has_inited()
+
             await self.notification_manager.update_and_send_tunnel_status()
             yield event.plain_result(f'✅ 强制调用更新函数完成！')
         except Exception as e:
@@ -653,6 +681,8 @@ class MyPlugin(Star):
     async def reset(self, event: AstrMessageEvent):
         """将所有聊天的所有tunnel监听任务都给爆了"""
         try:
+            self.__check_has_inited()
+
             await self.notification_manager.reset()
             yield event.plain_result(f'✅ 重置所有数据完成！')
         except Exception as e:
@@ -662,6 +692,8 @@ class MyPlugin(Star):
     @cft.command("remove_umo")
     async def remove_umo(self, event: AstrMessageEvent, target_umo: str):
         try:
+            self.__check_has_inited()
+
             await self.notification_manager.remove_umo(target_umo)
             yield event.plain_result(f'✅ 移除指定 `{target_umo}` 完成！')
         except Exception as e:
@@ -671,6 +703,8 @@ class MyPlugin(Star):
     @cft.command("remove_tunnel")
     async def remove_tunnel(self, event: AstrMessageEvent, target_tunnel: str):
         try:
+            self.__check_has_inited()
+
             await self.notification_manager.remove_tunnel(target_tunnel)
             yield event.plain_result(f'✅ 移除 Tunnel `{target_tunnel}` 的监控任务完成！')
         except Exception as e:
