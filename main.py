@@ -304,6 +304,8 @@ class NotificationManager:
             else:
                 raise TunnelAlreadyAddedException
 
+            self._save_notification_dict()
+
     async def remove_relation(self, umo: str, tunnel: str):
         async with self.shared_lock:
             tunnel_uuid = self.get_tunnel_uuid(tunnel)
@@ -333,6 +335,8 @@ class NotificationManager:
             if len(self.umo_to_tunnel[tunnel_uuid]) == 0:
                 del self.tunnel_to_umo[tunnel_uuid]
 
+            self._save_notification_dict()
+
     async def remove_tunnel(self, tunnel: str, has_acquired_lock: bool = False) -> List[str]:
         """单方面移除掉一个tunnel，解除其与所有umo的关系（如：远端CF配置改变）"""
         if not has_acquired_lock:
@@ -340,6 +344,8 @@ class NotificationManager:
 
         tunnel_uuid = self.get_tunnel_uuid(tunnel)
         temp = await self.remove_tunnel_by_uuid(tunnel_uuid, True)
+
+        self._save_notification_dict()
 
         if not has_acquired_lock:
             self.shared_lock.release()
@@ -373,6 +379,8 @@ class NotificationManager:
                     del self.tunnel_status_cache[tunnel]
                     del self.notification_status[tunnel]
 
+            self._save_notification_dict()
+
             return tunnels
 
     async def reset(self):
@@ -382,6 +390,7 @@ class NotificationManager:
             self.tunnel_to_umo = {}
             self.tunnel_status_cache = OrderedDict()
             self.notification_status = {}
+            self._save_notification_dict()
 
             self.terminate_task()
 
