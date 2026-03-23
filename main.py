@@ -540,8 +540,8 @@ class MyPlugin(Star):
 
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
-        if self.config.get('api_token') == '':
-            logger.error('请首先配置 `api_token` ，然后重启插件使用！')
+        if self.config.get('api_token') == '' and self.config.get('account_id'):
+            logger.error('请首先配置 `api_token` 与 `account_id`，然后重启插件使用！')
             return
         self.has_initialized = True
 
