@@ -295,7 +295,7 @@ class NotificationManager:
             if tunnel_uuid not in self.notification_status:
                 self.notification_status[tunnel_uuid] = {}
 
-            if tunnel_uuid not in self.umo_to_tunnel[umo] and umo not in self.tunnel_to_umo[tunnel]:
+            if tunnel_uuid not in self.umo_to_tunnel[umo] and umo not in self.tunnel_to_umo[tunnel_uuid]:
                 self.umo_to_tunnel[umo].append(tunnel_uuid)
                 self.tunnel_to_umo[tunnel_uuid].append(umo)
 
