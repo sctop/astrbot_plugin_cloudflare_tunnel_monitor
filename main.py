@@ -208,7 +208,7 @@ class NotificationSender:
         for i in tunnels:
             if i.name == 'NoneNoneNoneNone':
                 # 特殊处理尚未获取到信息的
-                temp = temp.message(f'- {i.name} ({i.uuid})\n   暂无信息')
+                temp = temp.message(f'- {i.name} ({i.id})\n   暂无信息')
                 continue
             temp = self._append_message_chain_for_tunnel_info_list(i, temp)
         return temp
