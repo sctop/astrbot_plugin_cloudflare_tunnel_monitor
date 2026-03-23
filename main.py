@@ -1,24 +1,683 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+import asyncio
+import copy
+import json
+import os
+import datetime
+import time
+from typing import Dict, List, Literal, Optional, Callable, Awaitable
+from uuid import UUID
+from zoneinfo import ZoneInfo
+from collections import OrderedDict
 
-@register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
+import pydantic
+from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.star import Context, Star, register
+from astrbot.api import logger, AstrBotConfig
+from astrbot.core.message.message_event_result import MessageChain
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+from cloudflare import Cloudflare, DefaultHttpxClient, RateLimitError, APIError
+from cloudflare.types.shared.cloudflare_tunnel import CloudflareTunnel
+
+from exceptions import TunnelAlreadyAddedException, TunnelAlreadyRemovedException, TunnelNotFoundException, \
+    CloudFlareAPI429Exception, CloudFlareAPIRequestError
+from utils import TunnelStatusUtils, TimeUtils
+
+
+class TunnelStatusModel(pydantic.BaseModel):
+    id: str  # uuid
+    name: str  # user-friendly name
+
+    status: Literal['inactive',  # never run
+    'degraded',  # active, but unhealthy (intermittent connection issues)
+    'healthy',  # everything fine
+    'down']  # no connections
+    tun_type: Literal["cfd_tunnel", "warp_connector", "warp", "magic", "ip_sec", "gre", "cni"]
+
+    created_at: datetime.datetime
+    conns_active_at: Optional[datetime.datetime]
+    conns_inactive_at: Optional[datetime.datetime]
+
+    conns_nums: int
+    conns_edge_dc: List[str]  # aggregated results
+    replica_nums: int
+
+    def clone(self) -> "TunnelStatusModel":
+        return copy.deepcopy(self)
+
+    @classmethod
+    def get_default_values(cls, uuid: str) -> "TunnelStatusModel":
+        """仅应作为临时措施时调用（如添加新tunnel时）"""
+        return cls(id=uuid, name='None', status='down', tun_type="cfd_tunnel", conns_active_at=None,
+                   conns_inactive_at=None, created_at=datetime.datetime.now(), replica_nums=0, conns_nums=0,
+                   conns_edge_dc=[])
+
+    @classmethod
+    def create_from_tunnel_entry(cls, entry: CloudflareTunnel) -> "TunnelStatusModel":
+        return cls(id=entry.id, name=entry.name, status=entry.status if entry.status else 'inactive',
+                   tun_type=entry.tun_type if entry.tun_type else 'cfd_tunnel',
+                   created_at=entry.created_at, conns_active_at=entry.conns_active_at,
+                   conns_inactive_at=entry.conns_inactive_at,
+                   conns_nums=len(entry.connections),
+                   conns_edge_dc=list(set([j.colo_name for j in entry.connections])),
+                   replica_nums=len(list(set([j.client_id for j in entry.connections]))))
+
+
+class NotificationSender:
+    def __init__(self, callback_func: Callable[[str, MessageChain], Awaitable[None]], timezone_name: str) -> None:
+        self.send_func = callback_func
+        self.timezone_name = timezone_name
+
+    def get_current_time(self) -> str:
+        current = datetime.datetime.now(tz=ZoneInfo(self.timezone_name))
+        return current.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _append_message_chain_for_active_tunnel_info(self, tunnel: TunnelStatusModel,
+                                                     msg: MessageChain) -> MessageChain:
+        return (
+            msg.message(f'- {tunnel.name} ({tunnel.id})\n')
+            .message(f'   连接时间: {tunnel.conns_active_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))} '
+                     f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - int(tunnel.conns_active_at.timestamp()))})\n')
+            .message(f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n')
+            .message(f'   replica 数: {tunnel.replica_nums}\n')
+        )
+
+    def _append_message_chain_for_tunnel_info_list(self, tunnel: TunnelStatusModel, msg: MessageChain) -> MessageChain:
+        return (
+            msg.message(f'- {tunnel.name} ({tunnel.id})\n')
+            .message(f'   创建时间: {tunnel.created_at.replace(tzinfo=ZoneInfo(self.timezone_name))}')
+            .message(
+                (f'   连接时间: {tunnel.conns_active_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))} '
+                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - int(tunnel.conns_active_at.timestamp()))})\n')
+                if tunnel.status != 'inactive' and tunnel.status != 'down'
+                else
+                (f'   断开时间: {tunnel.conns_inactive_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))} '
+                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - int(tunnel.conns_inactive_at.timestamp()))})\n')
+            )
+            .message((f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n'
+                      f'   replica 数: {tunnel.replica_nums}\n')
+                     if tunnel.status != 'inactive' and tunnel.status != 'down'
+                     else '')
+            .message(f'   Tunnel 类型: {tunnel.tun_type}\n')
+            .message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
+        )
+
+    @staticmethod
+    def _get_status_string(status: str) -> str:
+        if status == 'degraded':
+            return '⚠️ 降级 DEGRADED'
+        elif status == 'healthy':
+            return '✅ 正常 HEALTHY'
+        elif status == 'down':
+            return '⛔ 宕机 DOWN'
+        elif status == 'inactive':
+            return '❌ 未连接过 INACTIVE'
+        else:
+            return 'ERROR HASSEI!'
+
+    async def active_tunnel_has_been_removed(self, umo_to_tunnels: Dict[str, List[str]]):
+        curr_time = self.get_current_time()
+
+        for umo in umo_to_tunnels:
+            msg = MessageChain().message('💀 检测到远端移除了一个或多个 Tunnel\n')
+            for tunnel_uuid in umo_to_tunnels[umo]:
+                msg = msg.message(f'- {tunnel_uuid}\n')
+            msg = (
+                msg.message('如以上情况并非您所为，请立即登录您的 CloudFlare 账号查看！\n\n')
+                .message(curr_time)
+            )
+
+            await self.send_func(umo, msg)
+
+    async def active_tunnel_has_down(self, umo_to_tunnels: Dict[str, List[str]],
+                                     tunnels: Dict[str, TunnelStatusModel]):
+        curr_time = self.get_current_time()
+
+        for umo in umo_to_tunnels:
+            msg = MessageChain().message('⛔ 监测到一个或多个 Tunnel 宕机/离线\n')
+            for tunnel_uuid in umo_to_tunnels[umo]:
+                tunnel = tunnels[tunnel_uuid]
+
+                if tunnel.conns_inactive_at is None:
+                    # Error Handling
+                    msg = (
+                        msg.message(f'- {tunnel.name} ({tunnel_uuid})\n')
+                        .message('  于未知时间宕机/离线，建议手动查询')
+                    )
+                else:
+                    msg = (
+                        msg.message(f'- {tunnel.name} ({tunnel_uuid})\n')
+                        .message(
+                            f'   离线时间: {tunnel.conns_inactive_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))}\n')
+                        .message(f'   当前状态: ⛔ 宕机 DOWN\n')
+                    )
+            msg = msg.message(f'\n{curr_time}')
+
+            await self.send_func(umo, msg)
+
+    async def active_tunnel_has_degraded(self, umo_to_tunnels: Dict[str, List[str]],
+                                         tunnels: Dict[str, TunnelStatusModel]):
+        curr_time = self.get_current_time()
+
+        for umo in umo_to_tunnels:
+            msg = MessageChain().message('⚠️ 监测到一个或多个 Tunnel 降级\n')
+            for tunnel_uuid in umo_to_tunnels[umo]:
+                tunnel = tunnels[tunnel_uuid]
+
+                msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
+                msg = msg.message(f'   当前状态: ⚠️ 降级 DEGRADED\n')
+
+            msg = msg.message(f'\n{curr_time}')
+
+            await self.send_func(umo, msg)
+
+    async def active_tunnel_has_active(self, umo_to_tunnels: Dict[str, List[str]],
+                                       tunnels: Dict[str, TunnelStatusModel]):
+        curr_time = self.get_current_time()
+
+        for umo in umo_to_tunnels:
+            msg = MessageChain().message('✅ 监测到一个或多个 Tunnel 上线/恢复正常\n')
+            for tunnel_uuid in umo_to_tunnels[umo]:
+                tunnel = tunnels[tunnel_uuid]
+
+                msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
+                msg = msg.message(f'   当前状态: ✅ 正常 HEALTHY\n')
+            msg = msg.message(f'\n{curr_time}')
+
+            await self.send_func(umo, msg)
+
+    async def active_tunnel_has_conn_changed(self, umo_to_tunnels: Dict[str, List[str]],
+                                             tunnels: Dict[str, TunnelStatusModel]):
+        curr_time = self.get_current_time()
+
+        for umo in umo_to_tunnels:
+            msg = MessageChain().message('❓ 监测到一个或多个 Tunnel 的 连接数/Replica 数据有变化\n')
+            for tunnel_uuid in umo_to_tunnels[umo]:
+                tunnel = tunnels[tunnel_uuid]
+
+                msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
+                msg = msg.message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
+            msg = msg.message(f'\n{curr_time}')
+
+            await self.send_func(umo, msg)
+
+    def passive_append_tunnel_listing(self, tunnels: List[TunnelStatusModel], msg: MessageChain) -> MessageChain:
+        temp = msg
+        for i in tunnels:
+            temp = self._append_message_chain_for_tunnel_info_list(i, temp)
+        return temp
+
+
+class NotificationManager:
+    def __init__(self, cf_client: Cloudflare, account_id: str, path: str, polling_time: int,
+                 sender: NotificationSender):
+        self.cf_client = cf_client
+        self.account_id = account_id
+        self.path = path
+        self.polling_time = polling_time
+        self.sender = sender
+
+        self.config = self._load_notification_dict()
+
+        self.shared_lock = asyncio.Lock()
+
+        self._init_relation()
+
+    def _load_notification_dict(self) -> Dict[str, List[str]]:
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump({}, f)
+            return {}
+
+    def _save_notification_dict(self):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(self.umo_to_tunnel, f, indent=2, ensure_ascii=False)
+
+    def _list_all_tunnels(self):
+        for i in range(5):
+            try:
+                temp = self.cf_client.zero_trust.tunnels.list(account_id=self.account_id)
+            except RateLimitError:
+                raise CloudFlareAPI429Exception
+            except APIError:
+                pass
+            else:
+                return temp
+
+        raise CloudFlareAPIRequestError
+
+    def _init_relation(self):
+        """ 从配置文件中生成 umo <-> tunnel 关系 """
+        # 配置文件本身就是 umo -> tunnel(s) 的
+        self.umo_to_tunnel: Dict[str, List[str]] = copy.deepcopy(self.config)
+
+        self.tunnel_to_umo: Dict[str, List[str]] = {}
+        self.tunnel_status_cache: Dict[str, TunnelStatusModel] = OrderedDict()
+        self.notification_status: Dict[str, Dict[str, TunnelStatusModel]] = {}
+        for (umo, tunnels) in self.umo_to_tunnel.items():
+            for tunnel in tunnels:
+                # tunnel -> umo
+                if tunnel not in self.tunnel_to_umo:
+                    self.tunnel_to_umo[tunnel] = []
+                self.tunnel_to_umo[tunnel].append(umo)
+
+                # tunnel status
+                if tunnel not in self.tunnel_status_cache:
+                    self.tunnel_status_cache[tunnel] = TunnelStatusModel.get_default_values(tunnel)
+
+                # notification status
+                if tunnel not in self.notification_status:
+                    self.notification_status[tunnel] = {}
+                self.notification_status[tunnel][umo] = TunnelStatusModel.get_default_values(tunnel)
+
+        self._polling_task = asyncio.create_task(self.polling_task_func())
+        self._polling_is_429 = (False, 0.0)
+        self._polling_last_run = 0
+
+    async def add_relation(self, umo: str, tunnel: str):
+        async with self.shared_lock:
+            tunnel_uuid = self.get_tunnel_uuid(tunnel)
+
+            if umo not in self.umo_to_tunnel:
+                self.umo_to_tunnel[umo] = []
+            if tunnel_uuid not in self.tunnel_to_umo:
+                self.tunnel_to_umo[tunnel_uuid] = []
+            if tunnel_uuid not in self.notification_status:
+                self.notification_status[tunnel_uuid] = {}
+
+            if tunnel_uuid not in self.umo_to_tunnel[umo] and umo not in self.tunnel_to_umo[tunnel]:
+                self.umo_to_tunnel[umo].append(tunnel_uuid)
+                self.tunnel_to_umo[tunnel_uuid].append(umo)
+
+                self.tunnel_status_cache[tunnel_uuid] = TunnelStatusModel.get_default_values(tunnel_uuid)
+                self.notification_status[tunnel_uuid][umo] = TunnelStatusModel.get_default_values(tunnel_uuid)
+            else:
+                raise TunnelAlreadyAddedException
+
+    async def remove_relation(self, umo: str, tunnel: str):
+        async with self.shared_lock:
+            tunnel_uuid = self.get_tunnel_uuid(tunnel)
+
+            # 首先检查这个 umo 和 tunnel 是有数据的（能够访问）
+            if umo not in self.umo_to_tunnel and tunnel_uuid not in self.tunnel_to_umo and tunnel_uuid not in self.notification_status and tunnel_uuid not in self.tunnel_status_cache:
+                raise TunnelAlreadyRemovedException
+            # 然后检查 umo 和 tunnel 各自存不存在
+            if umo not in self.tunnel_to_umo[tunnel_uuid] and umo not in self.umo_to_tunnel[
+                tunnel_uuid] and umo not in \
+                    self.notification_status[tunnel_uuid]:
+                raise TunnelAlreadyRemovedException
+
+            if umo in self.umo_to_tunnel[tunnel_uuid]:
+                self.umo_to_tunnel[tunnel_uuid].remove(umo)
+            if tunnel_uuid in self.tunnel_to_umo[umo]:
+                self.tunnel_to_umo[umo].remove(tunnel_uuid)
+            if tunnel_uuid in self.notification_status:
+                if umo in self.notification_status[tunnel_uuid]:
+                    del self.notification_status[tunnel_uuid][umo]
+
+            # 最后删掉不要的
+            if len(self.tunnel_to_umo[umo]) == 0:
+                del self.umo_to_tunnel[umo]
+                del self.tunnel_status_cache[tunnel_uuid]
+                del self.notification_status[tunnel_uuid]
+            if len(self.umo_to_tunnel[tunnel_uuid]) == 0:
+                del self.tunnel_to_umo[tunnel_uuid]
+
+    async def remove_tunnel(self, tunnel: str, has_acquired_lock: bool = False) -> List[str]:
+        """单方面移除掉一个tunnel，解除其与所有umo的关系（如：远端CF配置改变）"""
+        if not has_acquired_lock:
+            await self.shared_lock.acquire()
+
+        tunnel_uuid = self.get_tunnel_uuid(tunnel)
+        temp = await self.remove_tunnel_by_uuid(tunnel_uuid, True)
+
+        if not has_acquired_lock:
+            self.shared_lock.release()
+
+        return temp
+
+    async def remove_tunnel_by_uuid(self, tunnel_uuid: str, has_acquired_lock: bool = False) -> List[str]:
+        if not has_acquired_lock:
+            await self.shared_lock.acquire()
+
+        umos = self.tunnel_to_umo.pop(tunnel_uuid, [])
+        for umo in umos:
+            self.umo_to_tunnel[tunnel_uuid].remove(umo)
+
+        del self.tunnel_status_cache[tunnel_uuid]
+        del self.notification_status[tunnel_uuid]
+
+        return umos
+
+    async def remove_umo(self, umo: str) -> List[str]:
+        """单方面移除掉一个umo，解除其与所有tunnel的关系"""
+        async with self.shared_lock:
+            # relations
+            tunnels = self.umo_to_tunnel.pop(umo, [])
+            for tunnel in tunnels:
+                self.tunnel_to_umo[tunnel].remove(umo)
+                del self.notification_status[tunnel][umo]
+
+                if len(self.tunnel_to_umo[tunnel]) == 0:
+                    del self.tunnel_to_umo[tunnel]
+                    del self.tunnel_status_cache[tunnel]
+                    del self.notification_status[tunnel]
+
+            return tunnels
+
+    async def reset(self):
+        """ok wtf"""
+        async with self.shared_lock:
+            self.umo_to_tunnel = {}
+            self.tunnel_to_umo = {}
+            self.tunnel_status_cache = OrderedDict()
+            self.notification_status = {}
+
+            self.terminate_task()
+
+            self._polling_task = asyncio.create_task(self.polling_task_func())
+            self._polling_last_run = 0
+
+    def get_all_tunnel_ids(self) -> List[Dict[str, str]]:
+        result = self._list_all_tunnels()
+
+        uuid_to_name = {}
+        name_to_uuid = {}
+
+        for i in result:
+            uuid_to_name[i.id] = i.name
+            name_to_uuid[i.name] = i.id
+
+        return [uuid_to_name, name_to_uuid]
+
+    def get_tunnel_uuid(self, tunnel: str) -> str:
+        if not self._polling_is_429[0]:
+            tunnel_data = self.get_all_tunnel_ids()
+        else:
+            tunnel_data = None
+
+        try:
+            UUID(tunnel)
+        except Exception:
+            if tunnel_data is None:
+                # 暂时无法创建对应的 name -> uuid mapping
+                raise CloudFlareAPI429Exception
+
+            if tunnel not in tunnel_data[1]:
+                raise TunnelNotFoundException
+            else:
+                return tunnel_data[1][tunnel]
+        else:
+            if tunnel_data is not None:
+                if tunnel not in tunnel_data[0]:
+                    raise TunnelNotFoundException
+                else:
+                    return tunnel
+            else:
+                if tunnel not in self.tunnel_to_umo:
+                    # 不是已知记录，有问题
+                    raise CloudFlareAPI429Exception
+                else:
+                    return tunnel
+
+    async def get_cached_tunnel_status(self, tunnel: str) -> TunnelStatusModel:
+        async with self.shared_lock:
+            tunnel_uuid = self.get_tunnel_uuid(tunnel)
+
+            if tunnel_uuid not in self.tunnel_status_cache:
+                raise TunnelNotFoundException
+            else:
+                return self.tunnel_status_cache[tunnel_uuid]
+
+    async def update_and_send_tunnel_status(self):
+        if self._polling_is_429[0]:
+            if time.time() - self._polling_is_429[1] <= 300:
+                # 5 minute blocking
+                raise CloudFlareAPI429Exception
+            else:
+                self._polling_is_429 = (False, 0.0)
+
+        async with self.shared_lock:
+            try:
+                all_tunnels = self._list_all_tunnels()
+            except CloudFlareAPI429Exception:
+                self._polling_is_429 = (True, time.time())
+                raise
+            except CloudFlareAPIRequestError:
+                raise
+
+            # 先检查有没有tunnel已经被移除掉的
+            deleted_uuid = TunnelStatusUtils.find_deleted_tunnels(list(self.tunnel_status_cache.values()),
+                                                                  all_tunnels)
+            if len(deleted_uuid) > 0:
+                temp = TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, deleted_uuid)
+                await self.sender.active_tunnel_has_been_removed(temp)
+
+                for i in deleted_uuid:
+                    await self.remove_tunnel(i)
+
+            # 然后，获取所有tunnel的新数据
+            old_tunnels = self.tunnel_status_cache
+            new_tunnels: Dict[str, TunnelStatusModel] = OrderedDict()
+            for i in all_tunnels:
+                if i.id not in old_tunnels:
+                    continue
+                new_tunnels[i.id] = TunnelStatusModel.create_from_tunnel_entry(i)
+            # 比较新旧tunnel数据
+            diffs = TunnelStatusUtils.calc_status_difference(old_tunnels, new_tunnels)
+
+            # 逐个发送变化通知
+            await self.sender.active_tunnel_has_active(
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_healthy"]),
+                new_tunnels)
+            await self.sender.active_tunnel_has_degraded(
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_degraded"]),
+                new_tunnels)
+            await self.sender.active_tunnel_has_down(
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_down"]),
+                new_tunnels
+            )
+            await self.sender.active_tunnel_has_conn_changed(
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["conn_changed"]),
+                new_tunnels
+            )
+
+            # 替换旧的为新的数据
+            self.tunnel_status_cache = new_tunnels
+
+        self._polling_last_run = time.time()
+
+    async def polling_task_func(self):
+        try:
+            while True:
+                try:
+                    logger.info("正在更新与发送 Tunnel 状态……")
+                    await self.update_and_send_tunnel_status()
+                except CloudFlareAPI429Exception:
+                    logger.error(
+                        f"触发 CloudFlare API 429 速率限制，当前时间 {TimeUtils.get_current_strftime_utc()}")
+                    await asyncio.sleep(310)  # 等待 300 + 10 秒
+                except CloudFlareAPIRequestError:
+                    logger.warning(f"CloudFlare API 请求失败，等待 10 秒后重试")
+                    await asyncio.sleep(10)
+                    continue
+
+                logger.info("已完成更新与发送 Tunnel 状态")
+                await asyncio.sleep(self.polling_time)
+        except asyncio.CancelledError:
+            logger.info("已取消更新轮询任务")
+
+    def terminate_task(self):
+        self._polling_task.cancel()
+
+    @property
+    def last_update_time(self) -> datetime.datetime:
+        return datetime.datetime.fromtimestamp(self._polling_last_run, datetime.UTC)
+
+
+@register("astrbot_plugin_cloudflare_tunnel_monitor", "sctop",
+          "一个基本算是自用的 CloudFlare Tunnel 存活状态的监测插件", "1.0.0")
 class MyPlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
+        self.config = config
+        self.data_basepath = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
+        self.data_notification_path = os.path.join(self.data_basepath, 'notification_db.json')
 
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+        self.cf_client = Cloudflare(api_token=self.config.get('api_token'),
+                                    http_client=DefaultHttpxClient(proxy=self.config.get('http_proxy')))
 
-    # 注册指令的装饰器。指令名为 helloworld。注册成功后，发送 `/helloworld` 就会触发这个指令，并回复 `你好, {user_name}!`
-    @filter.command("helloworld")
-    async def helloworld(self, event: AstrMessageEvent):
-        """这是一个 hello world 指令""" # 这是 handler 的描述，将会被解析方便用户了解插件内容。建议填写。
-        user_name = event.get_sender_name()
-        message_str = event.message_str # 用户发的纯文本消息字符串
-        message_chain = event.get_messages() # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        logger.info(message_chain)
-        yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
+        self.notification_sender = NotificationSender(self.send_message_callback, self.config.get('time_timezone'))
+        self.notification_manager = NotificationManager(self.cf_client, self.config.get('account_id'),
+                                                        self.data_notification_path,
+                                                        self.config.get('polling_time'),
+                                                        sender=self.notification_sender)
+
+    @filter.command_group("cft")
+    async def cft(self):
+        pass
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command("add")
+    async def add_tunnel(self, event: AstrMessageEvent, name: str):
+        try:
+            await self.notification_manager.add_relation(event.unified_msg_origin, name)
+            yield event.plain_result(f'✅ 添加 `{name}` 成功！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command("remove")
+    async def remove_tunnel(self, event: AstrMessageEvent, name: str):
+        try:
+            await self.notification_manager.remove_relation(event.unified_msg_origin, name)
+            yield event.plain_result(f'✅ 移除 `{name}` 成功！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @cft.command("list")
+    async def list(self, event: AstrMessageEvent):
+        try:
+            curr_list = self.notification_manager.umo_to_tunnel.get(event.unified_msg_origin, [])
+            curr_tunnels = [self.notification_manager.tunnel_status_cache[i] for i in curr_list]
+
+            msg = MessageChain().message('🔍 以下是正在监测的 Tunnels 信息\n')
+            msg = self.notification_sender.passive_append_tunnel_listing(curr_tunnels, msg)
+            msg = (msg
+                   .message(
+                f'\n缓存更新时间: {(self.notification_manager.last_update_time.replace()
+                                    .astimezone(ZoneInfo(self.config.get("time_timezone")))
+                                    .strftime('%Y-%m-%d %H:%M:%S'))}\n')
+                   .message(f'时间: {self.notification_sender.get_current_time()}'))
+            yield event.chain_result(msg)
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @cft.command("list_all_tunnels")
+    async def list_all(self, event: AstrMessageEvent):
+        """这里指的是列出所有正在监控的 Tunnels"""
+        try:
+            msg = MessageChain().message('🔍 以下是全局正在监测的 Tunnels 信息\n')
+            msg = self.notification_sender.passive_append_tunnel_listing(
+                list(self.notification_manager.tunnel_status_cache.values()), msg)
+
+            msg = msg.message('📋 以下是 UMO -> Tunnel UUID 信息\n')
+            for (umo, tunnels) in self.notification_manager.umo_to_tunnel:
+                msg = msg.message(f'- {umo}\n')
+                for tunnel in tunnels:
+                    msg = msg.message(f'   - {tunnel}\n')
+
+            msg = msg.message('📋 以下是 Tunnel UUID -> UMO 信息\n')
+            for (tunnel, umos) in self.notification_manager.tunnel_to_umo:
+                msg = msg.message(f'- {tunnel}\n')
+                for umo in umos:
+                    msg = msg.message(f'   - {umo}\n')
+
+            msg = (msg
+                   .message(
+                f'\n缓存更新时间: {(self.notification_manager.last_update_time.replace()
+                                    .astimezone(ZoneInfo(self.config.get("time_timezone")))
+                                    .strftime('%Y-%m-%d %H:%M:%S'))}\n')
+                   .message(f'时间: {self.notification_sender.get_current_time()}'))
+            yield event.chain_result(msg)
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @cft.command("list_all_tunnels_api")
+    async def list_api_all(self, event: AstrMessageEvent):
+        """这里指的是列出整个 API Key 下面都可以用于监测的 Tunnels"""
+        try:
+            all_tunnels = self.notification_manager._list_all_tunnels()
+            curr_time = self.notification_sender.get_current_time()
+
+            msg = MessageChain().message('🔍 以下是账号中所有可用于添加的 Tunnels\n')
+            msg = self.notification_sender.passive_append_tunnel_listing(all_tunnels, msg)
+            msg = msg.message(f'\n时间: {curr_time}')
+            yield event.chain_result(msg)
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command("clear")
+    async def clear(self, event: AstrMessageEvent):
+        """将当前聊天的所有tunnel监听任务给爆了"""
+        try:
+            await self.notification_manager.remove_umo(event.unified_msg_origin)
+            yield event.plain_result(f'✅ 清空当前 `{event.unified_msg_origin}` 的所有监控任务成功！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command("force_update")
+    async def force_update(self, event: AstrMessageEvent):
+        """强制调用更新函数"""
+        try:
+            await self.notification_manager.update_and_send_tunnel_status()
+            yield event.plain_result(f'✅ 强制调用更新函数完成！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command("reset")
+    async def reset(self, event: AstrMessageEvent):
+        """将所有聊天的所有tunnel监听任务都给爆了"""
+        try:
+            await self.notification_manager.reset()
+            yield event.plain_result(f'✅ 重置所有数据完成！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command("remove_umo")
+    async def remove_umo(self, event: AstrMessageEvent, target_umo: str):
+        try:
+            await self.notification_manager.remove_umo(target_umo)
+            yield event.plain_result(f'✅ 移除指定 `{target_umo}` 完成！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command("remove_tunnel")
+    async def remove_tunnel(self, event: AstrMessageEvent, target_tunnel: str):
+        try:
+            await self.notification_manager.remove_tunnel(target_tunnel)
+            yield event.plain_result(f'✅ 移除 Tunnel `{target_tunnel}` 的监控任务完成！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+
+    async def send_message_callback(self, umo: str, message_chain: MessageChain):
+        for i in range(10):
+            try:
+                await self.context.send_message(umo, message_chain)
+                return
+            except Exception as e:
+                logger.error(f'无法发送消息到 {umo} (第{i + 1}次 ,MessageChain {message_chain}): {e}')
+        logger.error(f'无法发送信息到 {umo} ，已取消本次发送')
 
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
+        self.notification_manager.terminate_task()

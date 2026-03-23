@@ -1,0 +1,25 @@
+{
+  "api_token": {
+    "description": "用于访问 CloudFlare API 的 token",
+    "type": "string"
+  },
+  "account_id": {
+    "description": "访问 CloudFlare API 时指定的账号ID",
+    "type": "string"
+  },
+  "time_timezone": {
+    "description": "输出时间时，所使用的市区（默认为 Asia/Taipei 以防止兼容性问题）",
+    "hint": "",
+    "type": "string",
+    "default": "Asia/Taipei"
+  },
+  "polling_time": {
+    "description": "每次轮询的等待时间 (以秒计)",
+    "type": "int",
+    "default": 20
+  },
+  "http_proxy": {
+    "description": "配置访问 CloudFlare API 时使用的代理服务器 (HTTP/HTTPS)",
+    "type": "string"
+  }
+}
