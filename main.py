@@ -215,14 +215,15 @@ class NotificationSender:
 
 
 class NotificationManager:
-    def __init__(self, cf_client: Cloudflare, account_id: str, path: str, polling_time: int,
+    def __init__(self, cf_client: Cloudflare, account_id: str, basepath: str, polling_time: int,
                  sender: NotificationSender):
         self.cf_client = cf_client
         self.account_id = account_id
-        self.path = path
+        self.basepath = basepath
         self.polling_time = polling_time
         self.sender = sender
 
+        self.db_path = os.path.join(self.basepath, 'notification_db.json')
         self.config = self._load_notification_dict()
 
         self.shared_lock = asyncio.Lock()
@@ -231,15 +232,15 @@ class NotificationManager:
 
     def _load_notification_dict(self) -> Dict[str, List[str]]:
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
+            with open(self.db_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            with open(self.path, "w", encoding="utf-8") as f:
+            with open(self.db_path, "w", encoding="utf-8") as f:
                 json.dump({}, f)
             return {}
 
     def _save_notification_dict(self):
-        with open(self.path, "w", encoding="utf-8") as f:
+        with open(self.db_path, "w", encoding="utf-8") as f:
             json.dump(self.umo_to_tunnel, f, indent=2, ensure_ascii=False)
 
     def _list_all_tunnels(self):
@@ -531,7 +532,9 @@ class MyPlugin(Star):
         super().__init__(context)
         self.config = config
         self.data_basepath = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
-        self.data_notification_path = os.path.join(self.data_basepath, 'notification_db.json')
+
+        # create base folder for the plugin
+        os.makedirs(self.data_basepath, exist_ok=True)
 
         self.has_initialized = False
 
@@ -544,13 +547,13 @@ class MyPlugin(Star):
 
         if self.config.get('http_proxy') != '':
             self.cf_client = Cloudflare(api_token=self.config.get('api_token'),
-                                    http_client=DefaultHttpxClient(proxy=self.config.get('http_proxy')))
+                                        http_client=DefaultHttpxClient(proxy=self.config.get('http_proxy')))
         else:
             self.cf_client = Cloudflare(api_token=self.config.get('api_token'))
 
         self.notification_sender = NotificationSender(self.send_message_callback, self.config.get('time_timezone'))
         self.notification_manager = NotificationManager(self.cf_client, self.config.get('account_id'),
-                                                        self.data_notification_path,
+                                                        self.data_basepath,
                                                         self.config.get('polling_time'),
                                                         sender=self.notification_sender)
 
