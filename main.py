@@ -18,9 +18,9 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from cloudflare import Cloudflare, DefaultHttpxClient, RateLimitError, APIError
 from cloudflare.types.shared.cloudflare_tunnel import CloudflareTunnel
 
-from exceptions import TunnelAlreadyAddedException, TunnelAlreadyRemovedException, TunnelNotFoundException, \
+from .exceptions import TunnelAlreadyAddedException, TunnelAlreadyRemovedException, TunnelNotFoundException, \
     CloudFlareAPI429Exception, CloudFlareAPIRequestError
-from utils import TunnelStatusUtils, TimeUtils
+from .utils import TunnelStatusUtils, TimeUtils
 
 
 class TunnelStatusModel(pydantic.BaseModel):
@@ -47,7 +47,7 @@ class TunnelStatusModel(pydantic.BaseModel):
     @classmethod
     def get_default_values(cls, uuid: str) -> "TunnelStatusModel":
         """仅应作为临时措施时调用（如添加新tunnel时）"""
-        return cls(id=uuid, name='None', status='down', tun_type="cfd_tunnel",
+        return cls(id=uuid, name='NoneNoneNoneNone', status='down', tun_type="cfd_tunnel",
                    conns_active_at=datetime.datetime.now(),
                    conns_inactive_at=datetime.datetime.now(),
                    created_at=datetime.datetime.now(),
@@ -206,6 +206,10 @@ class NotificationSender:
     def passive_append_tunnel_listing(self, tunnels: List[TunnelStatusModel], msg: MessageChain) -> MessageChain:
         temp = msg
         for i in tunnels:
+            if i.name == 'NoneNoneNoneNone':
+                # 特殊处理尚未获取到信息的
+                temp = temp.message(f'- {i.name} ({i.uuid})\n   暂无信息')
+                continue
             temp = self._append_message_chain_for_tunnel_info_list(i, temp)
         return temp
 
