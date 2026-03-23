@@ -5,27 +5,33 @@ class TunnelAlreadyAddedException(Exception):
 
 # CLIENT/USER SIDE 用户端
 class TunnelAlreadyRemovedException(Exception):
-    pass
+    def __str__(self):
+        return "TunnelAlreadyRemovedException"
 
 
 # CLIENT/USER SIDE 用户端
 class TunnelMultipleAliasesException(Exception):
     """多个tunnels共用一个别名"""
-    pass
+    def __str__(self):
+        return "TunnelMultipleAliasesException"
 
 # CLIENT/USER SIDE 用户端
 class TunnelNotFoundException(Exception):
-    pass
+    def __str__(self):
+        return "TunnelNotFoundException"
 
 # CLIENT/USER SIDE 用户端
 class CloudFlareAPI429Exception(Exception):
-    pass
+    def __str__(self):
+        return "CloudFlareAPI429Exception"
 
 # CLIENT/USER SIDE 用户端
 class CloudFlareAPIRequestError(Exception):
-    pass
+    def __str__(self):
+        return "CloudFlareAPIRequestError"
 
 
 # SERVER/REMOTE SIDE 远程端
 class TunnelRemotelyRemovedException(Exception):
-    pass
+    def __str__(self):
+        return "TunnelRemotelyRemovedException"
