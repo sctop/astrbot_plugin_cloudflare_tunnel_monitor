@@ -640,7 +640,8 @@ class MyPlugin(Star):
                 f'\n缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
                                                                          self.config.get('time_timezone'))}\n')
                    .message(f'时间: {self.notification_sender.get_current_time()}'))
-            yield event.chain_result(msg)
+
+            await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
 
@@ -671,7 +672,8 @@ class MyPlugin(Star):
                 f'\n缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
                                                                          self.config.get('time_timezone'))}\n')
                    .message(f'时间: {self.notification_sender.get_current_time()}'))
-            yield event.chain_result(msg)
+
+            await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
 
@@ -688,7 +690,8 @@ class MyPlugin(Star):
             msg = MessageChain().message('🔍 以下是账号中所有可用于添加的 Tunnels\n')
             msg = self.notification_sender.passive_append_tunnel_listing(all_tunnels, msg)
             msg = msg.message(f'\n时间: {curr_time}')
-            yield event.chain_result(msg)
+
+            await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
 
