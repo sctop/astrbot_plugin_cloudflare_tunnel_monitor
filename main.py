@@ -464,14 +464,17 @@ class NotificationManager:
         return [uuid_to_name, name_to_uuid]
 
     def get_tunnel_uuid(self, tunnel: str) -> str:
-        if not self._polling_is_429[0]:
-            tunnel_data = self.get_all_tunnel_ids()
-        else:
-            tunnel_data = None
+        def get_tunnel_data():
+            if not self._polling_is_429[0]:
+                return self.get_all_tunnel_ids()
+            else:
+                return None
 
         try:
             UUID(tunnel)
         except Exception:
+            tunnel_data = get_tunnel_data()
+
             if tunnel_data is None:
                 # 暂时无法创建对应的 name -> uuid mapping
                 raise CloudFlareAPI429Exception
@@ -481,17 +484,20 @@ class NotificationManager:
             else:
                 return tunnel_data[1][tunnel]
         else:
+            if tunnel in self.tunnel_to_umo:
+                # 是已知的 tunnel
+                return tunnel
+
+            tunnel_data = get_tunnel_data()
+
             if tunnel_data is not None:
                 if tunnel not in tunnel_data[0]:
                     raise TunnelNotFoundException
                 else:
                     return tunnel
             else:
-                if tunnel not in self.tunnel_to_umo:
-                    # 不是已知记录，有问题
-                    raise CloudFlareAPI429Exception
-                else:
-                    return tunnel
+                # 前面已经检查过了，所以行进到这里的话只能抛429了
+                raise CloudFlareAPI429Exception
 
     async def get_cached_tunnel_status(self, tunnel: str) -> TunnelStatusModel:
         async with self.shared_lock:
