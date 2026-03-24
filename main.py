@@ -538,7 +538,7 @@ class NotificationManager:
           "一个基本算是自用的 CloudFlare Tunnel 存活状态的监测插件", "1.0.0")
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
-        super().__init__(context)
+        super().__init__(context, config)
         self.config = config
         self.data_basepath = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
 
