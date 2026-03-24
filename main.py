@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 from collections import OrderedDict
 
 import pydantic
-import astrbot.api.message_components as Comp
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
@@ -19,6 +18,7 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from cloudflare import Cloudflare, DefaultHttpxClient, RateLimitError, APIError
 from cloudflare.types.shared.cloudflare_tunnel import CloudflareTunnel
 
+from utils import FileUtils
 from .exceptions import TunnelAlreadyAddedException, TunnelAlreadyRemovedException, TunnelNotFoundException, \
     CloudFlareAPI429Exception, CloudFlareAPIRequestError
 from .utils import TunnelStatusUtils, TimeUtils
@@ -268,31 +268,24 @@ class NotificationManager:
         self.polling_time = polling_time
         self.sender = sender
 
-        self.db_path = os.path.join(self.basepath, 'notification_db.json')
-        self.config = self._load_notification_dict()
+        self.db_path = [os.path.join(self.basepath, 'notification_db.json')]
+        self.umo_to_tunnel: Dict[str, List[str]] = {}  # config
+        self.ignored_umo: List[str] = []
 
         self.shared_lock = asyncio.Lock()
 
+        self._load_notification_data()
         self._init_relation()
 
-    def _load_notification_dict(self) -> Dict[str, List[str]]:
+    def _load_notification_data(self):
         logger.info('加载既有 notification_db.json')
-        try:
-            with open(self.db_path, "r", encoding="utf-8") as f:
-                logger.debug("notification_db.json exists")
-                return json.load(f)
-        except Exception as e:
-            logger.warning(f'notification_db.json 加载失败: {e}')
+        self.umo_to_tunnel = FileUtils.load_json_with_default(self.db_path[0], {})
+        logger.info('加载既有 ignored_umo.json')
+        self.ignored_umo = FileUtils.load_json_with_default(self.db_path[1], [])
 
-            with open(self.db_path, "w", encoding="utf-8") as f:
-                json.dump({}, f)
-
-            logger.debug('notification_db.json created')
-            return {}
-
-    def _save_notification_dict(self):
+    def _save_notification_data(self):
         logger.debug('保存 notification_db.json')
-        with open(self.db_path, "w", encoding="utf-8") as f:
+        with open(self.db_path[0], "w", encoding="utf-8") as f:
             json.dump(self.umo_to_tunnel, f, indent=2, ensure_ascii=False)
 
     def _list_all_tunnels(self):
@@ -315,9 +308,6 @@ class NotificationManager:
 
     def _init_relation(self):
         """ 从配置文件中生成 umo <-> tunnel 关系 """
-        # 配置文件本身就是 umo -> tunnel(s) 的
-        self.umo_to_tunnel: Dict[str, List[str]] = copy.deepcopy(self.config)
-
         self.tunnel_to_umo: Dict[str, List[str]] = {}
         self.tunnel_status_cache: Dict[str, TunnelStatusModel] = OrderedDict()
         self.notification_status: Dict[str, Dict[str, TunnelStatusModel]] = {}
@@ -361,7 +351,7 @@ class NotificationManager:
             else:
                 raise TunnelAlreadyAddedException
 
-            self._save_notification_dict()
+            self._save_notification_data()
 
     async def remove_relation(self, umo: str, tunnel: str):
         async with self.shared_lock:
@@ -392,7 +382,7 @@ class NotificationManager:
             if len(self.umo_to_tunnel[tunnel_uuid]) == 0:
                 del self.tunnel_to_umo[tunnel_uuid]
 
-            self._save_notification_dict()
+            self._save_notification_data()
 
     async def remove_tunnel(self, tunnel: str, has_acquired_lock: bool = False) -> List[str]:
         """单方面移除掉一个tunnel，解除其与所有umo的关系（如：远端CF配置改变）"""
@@ -402,7 +392,7 @@ class NotificationManager:
         tunnel_uuid = self.get_tunnel_uuid(tunnel)
         temp = await self.remove_tunnel_by_uuid(tunnel_uuid, True)
 
-        self._save_notification_dict()
+        self._save_notification_data()
 
         if not has_acquired_lock:
             self.shared_lock.release()
@@ -436,7 +426,7 @@ class NotificationManager:
                     del self.tunnel_status_cache[tunnel]
                     del self.notification_status[tunnel]
 
-            self._save_notification_dict()
+            self._save_notification_data()
 
             return tunnels
 
@@ -447,12 +437,26 @@ class NotificationManager:
             self.tunnel_to_umo = {}
             self.tunnel_status_cache = OrderedDict()
             self.notification_status = {}
-            self._save_notification_dict()
+            self._save_notification_data()
 
             self.terminate_task()
 
             self._polling_task = asyncio.create_task(self.polling_task_func())
             self._polling_last_run = 0
+
+    async def add_ignored_umo(self, umo: str):
+        async with self.shared_lock:
+            if umo not in self.ignored_umo:
+                self.ignored_umo.append(umo)
+
+            self._save_notification_data()
+
+    async def remove_ignored_umo(self, umo: str):
+        async with self.shared_lock:
+            if umo in self.ignored_umo:
+                self.ignored_umo.remove(umo)
+
+            self._save_notification_data()
 
     def get_all_tunnel_ids(self) -> List[Dict[str, str]]:
         result = self._list_all_tunnels()
@@ -532,7 +536,8 @@ class NotificationManager:
             deleted_uuid = TunnelStatusUtils.find_deleted_tunnels(list(self.tunnel_status_cache.values()),
                                                                   all_tunnels)
             if len(deleted_uuid) > 0:
-                temp = TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, deleted_uuid)
+                temp = TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, deleted_uuid,
+                                                                             self.ignored_umo)
                 await self.sender.active_tunnel_has_been_removed(temp)
 
                 for i in deleted_uuid:
@@ -550,17 +555,21 @@ class NotificationManager:
 
             # 逐个发送变化通知
             await self.sender.active_tunnel_has_active(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_healthy"]),
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_healthy"],
+                                                                      self.ignored_umo),
                 new_tunnels)
             await self.sender.active_tunnel_has_degraded(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_degraded"]),
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_degraded"],
+                                                                      self.ignored_umo),
                 new_tunnels)
             await self.sender.active_tunnel_has_down(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_down"]),
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_down"],
+                                                                      self.ignored_umo),
                 new_tunnels
             )
             await self.sender.active_tunnel_has_conn_changed(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["conn_changed"]),
+                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["conn_changed"],
+                                                                      self.ignored_umo),
                 new_tunnels
             )
 
@@ -636,6 +645,38 @@ class MyPlugin(Star):
     @filter.command_group("cft")
     async def cft(self):
         pass
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command('on')
+    async def cft_on(self, event: AstrMessageEvent, target_umo: str = None):
+        """启用本 umo 聊天，或指定一个 umo 聊天，的【主动】推送功能"""
+        try:
+            self.__check_has_inited()
+
+            temp = target_umo if target_umo is not None else event.unified_msg_origin
+            await self.notification_manager.remove_ignored_umo(temp)
+
+            yield event.plain_result(f'✅ 已成功启用 `{temp}` 的主动推送功能！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command('off')
+    async def cft_off(self, event: AstrMessageEvent, target_umo: str = None):
+        """关闭本 umo 聊天，或指定一个 umo 聊天，的【主动】推送功能"""
+        try:
+            self.__check_has_inited()
+
+            temp = target_umo if target_umo is not None else event.unified_msg_origin
+            await self.notification_manager.add_ignored_umo(temp)
+
+            yield event.plain_result(f'✅ 已成功关闭 `{temp}` 的主动推送功能！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("add")

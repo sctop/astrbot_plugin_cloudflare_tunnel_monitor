@@ -1,5 +1,6 @@
 import datetime
-from typing import Dict, List
+import json
+from typing import Dict, List, Any
 from zoneinfo import ZoneInfo
 from _pydatetime import tzinfo
 
@@ -50,10 +51,17 @@ class TunnelStatusUtils:
 
     @staticmethod
     def pair_umo_and_tunnelid_by_tunnel_ids(tunnel_to_umo: Dict[str, List[str]],
-                                            tunnel_ids: list) -> Dict[str, List[str]]:
+                                            tunnel_ids: list,
+                                            excluded_umos=None) -> Dict[str, List[str]]:
+        if excluded_umos is None:
+            excluded_umos = []
+
         result = {}
         for id in tunnel_ids:
             for umo in tunnel_to_umo[id]:
+                if umo in excluded_umos:
+                    continue
+
                 if umo not in result:
                     result[umo] = []
                 result[umo].append(id)
@@ -81,3 +89,15 @@ class TimeUtils:
     @staticmethod
     def get_datetime_strftime_in_tz(dt: datetime.datetime, tz: ZoneInfo | str) -> str:
         return dt.astimezone(tz if isinstance(tz, ZoneInfo) else ZoneInfo(tz)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+class FileUtils:
+    @staticmethod
+    def load_json_with_default(filepath: str, default: Any) -> Any:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(default, f)
+            return default
