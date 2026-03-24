@@ -88,7 +88,7 @@ class NotificationSender:
     def _append_message_chain_for_tunnel_info_list(self, tunnel: TunnelStatusModel, msg: MessageChain) -> MessageChain:
         return (
             msg.message(f'- {tunnel.name} ({tunnel.id})\n')
-            .message(f'   创建时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.created_at, self.timezone_name)} ')
+            .message(f'   创建时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.created_at, self.timezone_name)}\n')
             .message(
                 (f'   连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)} '
                  f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n')
