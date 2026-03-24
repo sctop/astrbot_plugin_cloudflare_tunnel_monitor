@@ -538,10 +538,10 @@ class NotificationManager:
             # 先检查有没有tunnel已经被移除掉的
             deleted_uuid = TunnelStatusUtils.find_deleted_tunnels(list(self.tunnel_status_cache.values()),
                                                                   all_tunnels)
+            deleted_pairs = {}
             if len(deleted_uuid) > 0:
-                temp = TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, deleted_uuid,
+                deleted_pairs = TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, deleted_uuid,
                                                                              self.ignored_umo)
-                await self.sender.active_tunnel_has_been_removed(temp)
 
                 for i in deleted_uuid:
                     await self.remove_tunnel(i, True)
@@ -556,28 +556,32 @@ class NotificationManager:
             # 比较新旧tunnel数据
             diffs = TunnelStatusUtils.calc_status_difference(old_tunnels, new_tunnels)
 
-            # 逐个发送变化通知
-            await self.sender.active_tunnel_has_active(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_healthy"],
-                                                                      self.ignored_umo),
-                new_tunnels)
-            await self.sender.active_tunnel_has_degraded(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_degraded"],
-                                                                      self.ignored_umo),
-                new_tunnels)
-            await self.sender.active_tunnel_has_down(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_down"],
-                                                                      self.ignored_umo),
-                new_tunnels
-            )
-            await self.sender.active_tunnel_has_conn_changed(
-                TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["conn_changed"],
-                                                                      self.ignored_umo),
-                new_tunnels
-            )
-
             # 替换旧的为新的数据
             self.tunnel_status_cache = new_tunnels
+
+        # 发送的时候释放
+        # 逐个发送变化通知
+        await self.sender.active_tunnel_has_been_removed(deleted_pairs)
+        await self.sender.active_tunnel_has_active(
+            TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_healthy"],
+                                                                  self.ignored_umo),
+            new_tunnels)
+        await self.sender.active_tunnel_has_degraded(
+            TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_degraded"],
+                                                                  self.ignored_umo),
+            new_tunnels)
+        await self.sender.active_tunnel_has_down(
+            TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["to_down"],
+                                                                  self.ignored_umo),
+            new_tunnels
+        )
+        await self.sender.active_tunnel_has_conn_changed(
+            TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, diffs["conn_changed"],
+                                                                  self.ignored_umo),
+            new_tunnels
+        )
+
+
 
         self._polling_last_run = time.time()
 
