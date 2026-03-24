@@ -115,7 +115,7 @@ class NotificationSender:
         elif status == 'inactive':
             return '❌ 未连接过 INACTIVE'
         else:
-            return 'ERROR HASSEI!' # Ptilospis!
+            return 'ERROR HASSEI!'  # Ptilospis!
 
     async def active_tunnel_has_been_removed(self, umo_to_tunnels: Dict[str, List[str]]):
         curr_time = self.get_current_time()
@@ -682,7 +682,8 @@ class MyPlugin(Star):
         try:
             self.__check_has_inited()
 
-            all_tunnels = self.notification_manager._list_all_tunnels()
+            all_tunnels = [TunnelStatusModel.create_from_tunnel_entry(i)
+                           for i in self.notification_manager._list_all_tunnels()]
             curr_time = self.notification_sender.get_current_time()
 
             msg = MessageChain().message('🔍 以下是账号中所有可用于添加的 Tunnels\n')
