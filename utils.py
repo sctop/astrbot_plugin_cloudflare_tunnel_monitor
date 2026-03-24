@@ -1,6 +1,7 @@
 import datetime
 from typing import Dict, List
 from zoneinfo import ZoneInfo
+from _pydatetime import tzinfo
 
 
 class TunnelStatusUtils:
@@ -76,3 +77,7 @@ class TimeUtils:
         hours, remainder = divmod(remainder, 3600)
         minutes, seconds = divmod(remainder, 60)
         return f'{int(days)}天{int(hours):02d}时{int(minutes):02d}分{int(seconds):02d}秒'
+
+    @staticmethod
+    def get_datetime_strftime_in_tz(dt: datetime.datetime, tz: ZoneInfo | str) -> str:
+        return dt.astimezone(tz if isinstance(tz, ZoneInfo) else ZoneInfo(tz)).strftime("%Y-%m-%d %H:%M:%S")

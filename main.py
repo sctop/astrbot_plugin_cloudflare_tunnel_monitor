@@ -78,8 +78,9 @@ class NotificationSender:
                                                      msg: MessageChain) -> MessageChain:
         return (
             msg.message(f'- {tunnel.name} ({tunnel.id})\n')
-            .message(f'   连接时间: {tunnel.conns_active_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))} '
-                     f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - int(tunnel.conns_active_at.timestamp()))})\n')
+            .message(
+                f'   连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)} '
+                f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n')
             .message(f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n')
             .message(f'   replica 数: {tunnel.replica_nums}\n')
         )
@@ -87,14 +88,14 @@ class NotificationSender:
     def _append_message_chain_for_tunnel_info_list(self, tunnel: TunnelStatusModel, msg: MessageChain) -> MessageChain:
         return (
             msg.message(f'- {tunnel.name} ({tunnel.id})\n')
-            .message(f'   创建时间: {tunnel.created_at.replace(tzinfo=ZoneInfo(self.timezone_name))}')
+            .message(f'   创建时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.created_at, self.timezone_name)} ')
             .message(
-                (f'   连接时间: {tunnel.conns_active_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))} '
-                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - int(tunnel.conns_active_at.timestamp()))})\n')
+                (f'   连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)} '
+                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n')
                 if tunnel.status != 'inactive' and tunnel.status != 'down'
                 else
-                (f'   断开时间: {tunnel.conns_inactive_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))} '
-                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - int(tunnel.conns_inactive_at.timestamp()))})\n')
+                (f'   断开时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)} '
+                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_inactive_at.timestamp())})\n')
             )
             .message((f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n'
                       f'   replica 数: {tunnel.replica_nums}\n')
@@ -156,7 +157,7 @@ class NotificationSender:
                     msg = (
                         msg.message(f'- {tunnel.name} ({tunnel_uuid})\n')
                         .message(
-                            f'   离线时间: {tunnel.conns_inactive_at.replace().astimezone(tz=ZoneInfo(self.timezone_name))}\n')
+                            f'   离线时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)}')
                         .message(f'   当前状态: ⛔ 宕机 DOWN\n')
                     )
             msg = msg.message(f'\n{curr_time}')
@@ -636,9 +637,8 @@ class MyPlugin(Star):
             msg = self.notification_sender.passive_append_tunnel_listing(curr_tunnels, msg)
             msg = (msg
                    .message(
-                f'\n缓存更新时间: {(self.notification_manager.last_update_time.replace()
-                                    .astimezone(ZoneInfo(self.config.get("time_timezone")))
-                                    .strftime('%Y-%m-%d %H:%M:%S'))}\n')
+                f'\n缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
+                                                                         self.config.get('time_timezone'))}\n')
                    .message(f'时间: {self.notification_sender.get_current_time()}'))
             yield event.chain_result(msg)
         except Exception as e:
@@ -668,9 +668,8 @@ class MyPlugin(Star):
 
             msg = (msg
                    .message(
-                f'\n缓存更新时间: {(self.notification_manager.last_update_time.replace()
-                                    .astimezone(ZoneInfo(self.config.get("time_timezone")))
-                                    .strftime('%Y-%m-%d %H:%M:%S'))}\n')
+                f'\n缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
+                                                                         self.config.get('time_timezone'))}\n')
                    .message(f'时间: {self.notification_sender.get_current_time()}'))
             yield event.chain_result(msg)
         except Exception as e:
