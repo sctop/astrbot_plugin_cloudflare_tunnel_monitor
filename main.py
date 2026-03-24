@@ -115,15 +115,17 @@ class NotificationSender:
         elif status == 'inactive':
             return '❌ 未连接过 INACTIVE'
         else:
-            return 'ERROR HASSEI!'
+            return 'ERROR HASSEI!' # Ptilospis!
 
     async def active_tunnel_has_been_removed(self, umo_to_tunnels: Dict[str, List[str]]):
         curr_time = self.get_current_time()
+        logger.debug(f'active_tunnel_has_been_removed is called ({curr_time})')
 
         for umo in umo_to_tunnels:
             msg = MessageChain().message('💀 检测到远端移除了一个或多个 Tunnel\n')
             for tunnel_uuid in umo_to_tunnels[umo]:
                 msg = msg.message(f'- {tunnel_uuid}\n')
+
             msg = (
                 msg.message('如以上情况并非您所为，请立即登录您的 CloudFlare 账号查看！\n\n')
                 .message(curr_time)
@@ -134,14 +136,18 @@ class NotificationSender:
     async def active_tunnel_has_down(self, umo_to_tunnels: Dict[str, List[str]],
                                      tunnels: Dict[str, TunnelStatusModel]):
         curr_time = self.get_current_time()
+        logger.debug(f'active_tunnel_has_down is called {curr_time}')
 
         for umo in umo_to_tunnels:
             msg = MessageChain().message('⛔ 监测到一个或多个 Tunnel 宕机/离线\n')
             for tunnel_uuid in umo_to_tunnels[umo]:
+                logger.debug(f'active_tunnel_has_down: UUID {tunnel_uuid}')
+
                 tunnel = tunnels[tunnel_uuid]
 
                 if tunnel.conns_inactive_at is None:
                     # Error Handling
+                    logger.warning(f'active_tunnel_has_down: no INACTIVE_AT data for {tunnel_uuid}')
                     msg = (
                         msg.message(f'- {tunnel.name} ({tunnel_uuid})\n')
                         .message('  于未知时间宕机/离线，建议手动查询')
@@ -160,14 +166,16 @@ class NotificationSender:
     async def active_tunnel_has_degraded(self, umo_to_tunnels: Dict[str, List[str]],
                                          tunnels: Dict[str, TunnelStatusModel]):
         curr_time = self.get_current_time()
+        logger.debug(f'active_tunnel_has_degraded is called {curr_time}')
 
         for umo in umo_to_tunnels:
             msg = MessageChain().message('⚠️ 监测到一个或多个 Tunnel 降级\n')
             for tunnel_uuid in umo_to_tunnels[umo]:
                 tunnel = tunnels[tunnel_uuid]
+                logger.debug(f'active_tunnel_has_degraded: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
-                msg = msg.message(f'   当前状态: ⚠️ 降级 DEGRADED\n')
+                msg = msg.message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
 
             msg = msg.message(f'\n{curr_time}')
 
@@ -176,11 +184,13 @@ class NotificationSender:
     async def active_tunnel_has_active(self, umo_to_tunnels: Dict[str, List[str]],
                                        tunnels: Dict[str, TunnelStatusModel]):
         curr_time = self.get_current_time()
+        logger.debug(f'active_tunnel_has_active is called {curr_time}')
 
         for umo in umo_to_tunnels:
             msg = MessageChain().message('✅ 监测到一个或多个 Tunnel 上线/恢复正常\n')
             for tunnel_uuid in umo_to_tunnels[umo]:
                 tunnel = tunnels[tunnel_uuid]
+                logger.debug(f'active_tunnel_has_active: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
                 msg = msg.message(f'   当前状态: ✅ 正常 HEALTHY\n')
@@ -191,11 +201,13 @@ class NotificationSender:
     async def active_tunnel_has_conn_changed(self, umo_to_tunnels: Dict[str, List[str]],
                                              tunnels: Dict[str, TunnelStatusModel]):
         curr_time = self.get_current_time()
+        logger.debug(f'active_tunnel_has_conn_changed is called {curr_time}')
 
         for umo in umo_to_tunnels:
             msg = MessageChain().message('❓ 监测到一个或多个 Tunnel 的 连接数/Replica 数据有变化\n')
             for tunnel_uuid in umo_to_tunnels[umo]:
                 tunnel = tunnels[tunnel_uuid]
+                logger.debug(f'active_tunnel_has_conn_changed: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
                 msg = msg.message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
@@ -208,8 +220,12 @@ class NotificationSender:
         for i in tunnels:
             if i.name == 'NoneNoneNoneNone':
                 # 特殊处理尚未获取到信息的
+                logger.debug(f'passive_append_tunnel_listing: tunnel {i} is uninitialized')
+
                 temp = temp.message(f'- {i.name} ({i.id})\n   暂无信息')
                 continue
+
+            logger.debug(f'passive_append_tunnel_listing: tunnel {i}')
             temp = self._append_message_chain_for_tunnel_info_list(i, temp)
         return temp
 
@@ -231,29 +247,41 @@ class NotificationManager:
         self._init_relation()
 
     def _load_notification_dict(self) -> Dict[str, List[str]]:
+        logger.info('加载既有 notification_db.json')
         try:
             with open(self.db_path, "r", encoding="utf-8") as f:
+                logger.debug("notification_db.json exists")
                 return json.load(f)
         except Exception as e:
+            logger.warning(f'notification_db.json 加载失败: {e}')
+
             with open(self.db_path, "w", encoding="utf-8") as f:
                 json.dump({}, f)
+
+            logger.debug('notification_db.json created')
             return {}
 
     def _save_notification_dict(self):
+        logger.debug('保存 notification_db.json')
         with open(self.db_path, "w", encoding="utf-8") as f:
             json.dump(self.umo_to_tunnel, f, indent=2, ensure_ascii=False)
 
     def _list_all_tunnels(self):
+        logger.debug('_list_all_tunnels is called')
         for i in range(5):
             try:
+                logger.debug(f'_list_all_tunnels ({i}) calls CF API')
                 temp = self.cf_client.zero_trust.tunnels.list(account_id=self.account_id)
             except RateLimitError:
+                logger.warning(f'无法 list tunnels : 429 Rate Limit Error')
                 raise CloudFlareAPI429Exception
-            except APIError:
+            except APIError as e:
+                logger.warning(f'无法 list tunnels : APIError for {e}')
                 pass
             else:
                 return temp
 
+        logger.error('Unable to list all tunnels.')
         raise CloudFlareAPIRequestError
 
     def _init_relation(self):
