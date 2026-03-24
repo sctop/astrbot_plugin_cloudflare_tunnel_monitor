@@ -75,4 +75,4 @@ class TimeUtils:
         days, remainder = divmod(seconds, 86400)
         hours, remainder = divmod(remainder, 3600)
         minutes, seconds = divmod(remainder, 60)
-        return f'{days}天{hours:02d}时{minutes:02d}分{seconds:02d}秒'
+        return f'{int(days)}天{int(hours):02d}时{int(minutes):02d}分{int(seconds):02d}秒'
