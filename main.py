@@ -544,7 +544,7 @@ class NotificationManager:
                 await self.sender.active_tunnel_has_been_removed(temp)
 
                 for i in deleted_uuid:
-                    await self.remove_tunnel(i)
+                    await self.remove_tunnel(i, True)
 
             # 然后，获取所有tunnel的新数据
             old_tunnels = self.tunnel_status_cache
