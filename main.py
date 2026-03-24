@@ -287,6 +287,9 @@ class NotificationManager:
         logger.debug('保存 notification_db.json')
         with open(self.db_path[0], "w", encoding="utf-8") as f:
             json.dump(self.umo_to_tunnel, f, indent=2, ensure_ascii=False)
+        logger.debug('保存 ignored_umo.json')
+        with open(self.db_path[1], "w", encoding="utf-8") as f:
+            json.dump(self.ignored_umo, f, indent=2, ensure_ascii=False)
 
     def _list_all_tunnels(self):
         logger.debug('_list_all_tunnels is called')
