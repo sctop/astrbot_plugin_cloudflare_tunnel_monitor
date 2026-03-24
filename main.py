@@ -82,7 +82,7 @@ class NotificationSender:
                 f'   连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)} '
                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n')
             .message(f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n')
-            .message(f'   replica 数: {tunnel.replica_nums}\n')
+            .message(f'   Replica 数: {tunnel.replica_nums}\n')
         )
 
     def _append_message_chain_for_tunnel_info_list(self, tunnel: TunnelStatusModel, msg: MessageChain) -> MessageChain:
@@ -98,7 +98,7 @@ class NotificationSender:
                  f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_inactive_at.timestamp())})\n')
             )
             .message((f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n'
-                      f'   replica 数: {tunnel.replica_nums}\n')
+                      f'   Replica 数: {tunnel.replica_nums}\n')
                      if tunnel.status != 'inactive' and tunnel.status != 'down'
                      else '')
             .message(f'   Tunnel 类型: {tunnel.tun_type}\n')
@@ -129,7 +129,7 @@ class NotificationSender:
 
             msg = (
                 msg.message('如以上情况并非您所为，请立即登录您的 CloudFlare 账号查看！\n\n')
-                .message(curr_time)
+                .message(f'当前时间: {curr_time}')
             )
 
             await self.send_func(umo, msg)
@@ -160,7 +160,7 @@ class NotificationSender:
                             f'   离线时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)}')
                         .message(f'   当前状态: ⛔ 宕机 DOWN\n')
                     )
-            msg = msg.message(f'\n{curr_time}')
+            msg = msg.message(f'\n当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -178,7 +178,7 @@ class NotificationSender:
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
                 msg = msg.message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
 
-            msg = msg.message(f'\n{curr_time}')
+            msg = msg.message(f'\n当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -195,7 +195,7 @@ class NotificationSender:
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
                 msg = msg.message(f'   当前状态: ✅ 正常 HEALTHY\n')
-            msg = msg.message(f'\n{curr_time}')
+            msg = msg.message(f'\n当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -212,7 +212,7 @@ class NotificationSender:
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
                 msg = msg.message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
-            msg = msg.message(f'\n{curr_time}')
+            msg = msg.message(f'\n当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -643,7 +643,7 @@ class MyPlugin(Star):
                    .message(
                 f'\n缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
                                                                          self.config.get('time_timezone'))}\n')
-                   .message(f'时间: {self.notification_sender.get_current_time()}'))
+                   .message(f'当前时间: {self.notification_sender.get_current_time()}'))
 
             await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
