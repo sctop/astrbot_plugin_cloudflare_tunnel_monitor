@@ -85,7 +85,7 @@ class NotificationSender:
                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n')
             .message(f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n')
             .message(f'   Replica 数: {tunnel.replica_nums}\n')
-            .message(f'   {self._get_status_string(tunnel.status)}\n')
+            .message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
         )
 
     def _append_message_chain_for_tunnel_info_list(self, tunnel: TunnelStatusModel) -> List[Comp]:
