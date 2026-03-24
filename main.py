@@ -647,6 +647,7 @@ class MyPlugin(Star):
             curr_tunnels = [self.notification_manager.tunnel_status_cache[i] for i in curr_list]
 
             msg = [Comp.At(qq=event.get_sender_id()),
+                   Comp.Plain('\u200b\n\u200b'),
                    Comp.Plain('🔍 以下是正在监测的 Tunnels 信息\n\u200b')]
             msg.extend(self.notification_sender.passive_append_tunnel_listing(curr_tunnels))
             msg.append(
@@ -670,6 +671,7 @@ class MyPlugin(Star):
             self.__check_has_inited()
 
             msg = [Comp.At(qq=event.get_sender_id()),
+                   Comp.Plain('\u200b\n\u200b'),
                    Comp.Plain('🔍 以下是全局正在监测的 Tunnels 信息\n\u200b')]
             msg.extend(
                 self.notification_sender.passive_append_tunnel_listing(
@@ -714,6 +716,7 @@ class MyPlugin(Star):
             curr_time = self.notification_sender.get_current_time()
 
             msg = [Comp.At(qq=event.get_sender_id()),
+                   Comp.Plain('\u200b\n\u200b'),
                    Comp.Plain('🔍 以下是账号中所有可用于添加的 Tunnels\n\u200b')]
             msg.extend(self.notification_sender.passive_append_tunnel_listing(all_tunnels))
             msg.append(Comp.Plain(f'\u200b\n时间: {curr_time}'))
