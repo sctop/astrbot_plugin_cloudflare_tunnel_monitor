@@ -267,7 +267,8 @@ class NotificationManager:
         self.polling_time = polling_time
         self.sender = sender
 
-        self.db_path = [os.path.join(self.basepath, 'notification_db.json')]
+        self.db_path = [os.path.join(self.basepath, 'notification_db.json'),
+                        os.path.join(self.basepath, 'ignored_umo.json')]
         self.umo_to_tunnel: Dict[str, List[str]] = {}  # config
         self.ignored_umo: List[str] = []
 
