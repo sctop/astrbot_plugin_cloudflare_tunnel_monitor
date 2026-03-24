@@ -78,43 +78,43 @@ class NotificationSender:
     def _append_message_chain_for_active_tunnel_info(self, tunnel: TunnelStatusModel,
                                                      msg: MessageChain) -> MessageChain:
         return (
-            msg.message(f'- {tunnel.name} {self._get_status_emoji(tunnel.status)}\n')
-            .message(f'   ID: {tunnel.id}\n')
+            msg.message(f'🚇 {tunnel.name} {self._get_status_emoji(tunnel.status)}\n')
+            .message(f'      🏷️ID: {tunnel.id}\n')
             .message(
-                f'   连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)} '
+                f'      📶连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)} '
                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n')
-            .message(f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n')
-            .message(f'   Replica 数: {tunnel.replica_nums}\n')
-            .message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
+            .message(f'      📲连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n')
+            .message(f'      👥Replica 数: {tunnel.replica_nums}\n')
+            .message(f'      🌐当前状态: {self._get_status_string(tunnel.status)}\n')
         )
 
     def _append_message_chain_for_tunnel_info_list(self, tunnel: TunnelStatusModel) -> List[Comp]:
         return [
-            Comp.Plain(f'- {tunnel.name} {self._get_status_emoji(tunnel.status)}\n\u200b'),
-            Comp.Plain(f'\u200b   ID: {tunnel.id}\n\u200b'),
+            Comp.Plain(f'🚇 {tunnel.name} {self._get_status_emoji(tunnel.status)}\n\u200b'),
+            Comp.Plain(f'\u200b      🏷️ID: {tunnel.id}\n\u200b'),
             Comp.Plain(
-                f'\u200b   创建时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.created_at, self.timezone_name)}\n\u200b'
+                f'\u200b      🐣创建时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.created_at, self.timezone_name)}\n\u200b'
             ),
             Comp.Plain(
                 (
-                    f'\u200b   连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)}'
+                    f'\u200b      📶连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)}'
                     f' ({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n\u200b'
                 )
                 if tunnel.status != 'inactive' and tunnel.status != 'down'
                 else
                 (
-                    f'\u200b   断开时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)}'
+                    f'\u200b      📶断开时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)}'
                     f' ({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_inactive_at.timestamp())})\n\u200b'
                 )
             ),
             Comp.Plain(
-                (f'\u200b   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n\u200b'
-                 f'\u200b   Replica 数: {tunnel.replica_nums}\n\u200b')
+                (f'\u200b      📲连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n\u200b'
+                 f'\u200b      👥Replica 数: {tunnel.replica_nums}\n\u200b')
                 if tunnel.status != 'inactive' and tunnel.status != 'down'
                 else ''
             ),
-            Comp.Plain(f'\u200b   Tunnel 类型: {tunnel.tun_type}\n\u200b'),
-            Comp.Plain(f'\u200b   当前状态: {self._get_status_string(tunnel.status)}\n\u200b')
+            Comp.Plain(f'\u200b      ⛓️Tunnel 类型: {tunnel.tun_type}\n\u200b'),
+            Comp.Plain(f'\u200b      🌐当前状态: {self._get_status_string(tunnel.status)}\n\u200b')
         ]
 
     @classmethod
@@ -154,7 +154,7 @@ class NotificationSender:
 
             msg = (
                 msg.message('如以上情况并非您所为，请立即登录您的 CloudFlare 账号查看！\n\n')
-                .message(f'当前时间: {curr_time}')
+                .message(f'🕙当前时间: {curr_time}')
             )
 
             await self.send_func(umo, msg)
@@ -175,20 +175,20 @@ class NotificationSender:
                     # Error Handling
                     logger.warning(f'active_tunnel_has_down: no INACTIVE_AT data for {tunnel_uuid}')
                     msg = (
-                        msg.message(f'- {tunnel.name}\n')
-                        .message(f'   ID: {tunnel_uuid}\n')
-                        .message(f'   于未知时间宕机/离线，建议手动查询\n')
+                        msg.message(f'🚇 {tunnel.name}\n')
+                        .message(f'      🏷️ID: {tunnel_uuid}\n')
+                        .message(f'      于未知时间宕机/离线，建议手动查询\n')
                     )
                 else:
                     msg = (
                         msg.message(f'- {tunnel.name}\n')
-                        .message(f'   ID: {tunnel_uuid}\n')
+                        .message(f'   🏷️ID: {tunnel_uuid}\n')
                         .message(
                             f'   离线时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)}\n')
                     )
 
                 msg = msg.message(self._get_status_string(tunnel.status))
-            msg = msg.message(f'\n当前时间: {curr_time}')
+            msg = msg.message(f'\n🕙当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -205,7 +205,7 @@ class NotificationSender:
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
 
-            msg = msg.message(f'\n当前时间: {curr_time}')
+            msg = msg.message(f'\n🕙当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -221,7 +221,7 @@ class NotificationSender:
                 logger.debug(f'active_tunnel_has_active: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
-            msg = msg.message(f'\n当前时间: {curr_time}')
+            msg = msg.message(f'\n🕙当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -237,7 +237,7 @@ class NotificationSender:
                 logger.debug(f'active_tunnel_has_conn_changed: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
-            msg = msg.message(f'\n当前时间: {curr_time}')
+            msg = msg.message(f'\n🕙当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
 
@@ -248,7 +248,7 @@ class NotificationSender:
                 # 特殊处理尚未获取到信息的
                 logger.debug(f'passive_append_tunnel_listing: tunnel {i} is uninitialized')
 
-                temp.append(Comp.Plain(f'- {i.name}\n   ID: {i.id}\n   暂无信息\n\u200b'))
+                temp.append(Comp.Plain(f'🚇 {i.name}\n      🏷️ID: {i.id}\n      暂无信息\n\u200b'))
                 continue
 
             logger.debug(f'passive_append_tunnel_listing: tunnel {i}')
@@ -674,11 +674,11 @@ class MyPlugin(Star):
             msg.extend(self.notification_sender.passive_append_tunnel_listing(curr_tunnels))
             msg.append(
                 Comp.Plain(
-                    f'\u200b\n缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
+                    f'\u200b\n📦缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
                                                                                    self.config.get('time_timezone'))}\n\u200b'
                 )
             )
-            msg.append(Comp.Plain(f'当前时间: {self.notification_sender.get_current_time()}'))
+            msg.append(Comp.Plain(f'🕙当前时间: {self.notification_sender.get_current_time()}'))
 
             yield event.chain_result(msg)
         except Exception as e:
@@ -715,11 +715,11 @@ class MyPlugin(Star):
 
             msg.append(
                 Comp.Plain(
-                    f'\u200b\n缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
+                    f'\u200b\n📦缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time,
                                                                                    self.config.get('time_timezone'))}\n\u200b'
                 )
             )
-            msg.append(Comp.Plain(f'时间: {self.notification_sender.get_current_time()}'))
+            msg.append(Comp.Plain(f'🕙当前时间: {self.notification_sender.get_current_time()}'))
 
             await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
@@ -741,7 +741,7 @@ class MyPlugin(Star):
                    Comp.Plain('\u200b\n\u200b'),
                    Comp.Plain('🔍 以下是账号中所有可用于添加的 Tunnels\n\u200b')]
             msg.extend(self.notification_sender.passive_append_tunnel_listing(all_tunnels))
-            msg.append(Comp.Plain(f'\u200b\n时间: {curr_time}'))
+            msg.append(Comp.Plain(f'\u200b\n🕙当前时间: {curr_time}'))
 
             yield event.chain_result(msg)
         except Exception as e:
