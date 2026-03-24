@@ -78,17 +78,20 @@ class NotificationSender:
     def _append_message_chain_for_active_tunnel_info(self, tunnel: TunnelStatusModel,
                                                      msg: MessageChain) -> MessageChain:
         return (
-            msg.message(f'- {tunnel.name} ({tunnel.id})\n')
+            msg.message(f'- {tunnel.name} {self._get_status_emoji(tunnel.status)}\n')
+            .message(f'   ID: {tunnel.id}\n')
             .message(
                 f'   连接时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_active_at, self.timezone_name)} '
                 f'({TimeUtils.get_ddhhmmss_from_seconds(time.time() - tunnel.conns_active_at.timestamp())})\n')
             .message(f'   连接数: {tunnel.conns_nums} ({", ".join(tunnel.conns_edge_dc)})\n')
             .message(f'   Replica 数: {tunnel.replica_nums}\n')
+            .message(f'   {self._get_status_string(tunnel.status)}\n')
         )
 
     def _append_message_chain_for_tunnel_info_list(self, tunnel: TunnelStatusModel) -> List[Comp]:
         return [
-            Comp.Plain(f'- {tunnel.name} ({tunnel.id})\n\u200b'),
+            Comp.Plain(f'- {tunnel.name} {self._get_status_emoji(tunnel.status)}\n\u200b'),
+            Comp.Plain(f'\u200b   ID: {tunnel.id}\n\u200b'),
             Comp.Plain(
                 f'\u200b   创建时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.created_at, self.timezone_name)}\n\u200b'
             ),
@@ -114,18 +117,31 @@ class NotificationSender:
             Comp.Plain(f'\u200b   当前状态: {self._get_status_string(tunnel.status)}\n\u200b')
         ]
 
-    @staticmethod
-    def _get_status_string(status: str) -> str:
+    @classmethod
+    def _get_status_string(cls, status: str) -> str:
         if status == 'degraded':
-            return '⚠️ 降级 DEGRADED'
+            return f'{cls._get_status_emoji(status)} 降级 DEGRADED'
         elif status == 'healthy':
-            return '✅ 正常 HEALTHY'
+            return f'{cls._get_status_emoji(status)} 正常 HEALTHY'
         elif status == 'down':
-            return '⛔ 宕机 DOWN'
+            return f'{cls._get_status_emoji(status)} 宕机 DOWN'
         elif status == 'inactive':
-            return '❌ 未连接过 INACTIVE'
+            return f'{cls._get_status_emoji(status)} 未连接过 INACTIVE'
         else:
-            return 'ERROR HASSEI!'  # Ptilospis!
+            return f'{cls._get_status_emoji(status)} ERROR HASSEI!'  # Ptilospis!
+
+    @staticmethod
+    def _get_status_emoji(status: str) -> str:
+        if status == 'degraded':
+            return '⚠️'
+        elif status == 'healthy':
+            return '✅'
+        elif status == 'down':
+            return '⛔'
+        elif status == 'inactive':
+            return '❌'
+        else:
+            return '❓'
 
     async def active_tunnel_has_been_removed(self, umo_to_tunnels: Dict[str, List[str]]):
         curr_time = self.get_current_time()
@@ -159,16 +175,19 @@ class NotificationSender:
                     # Error Handling
                     logger.warning(f'active_tunnel_has_down: no INACTIVE_AT data for {tunnel_uuid}')
                     msg = (
-                        msg.message(f'- {tunnel.name} ({tunnel_uuid})\n')
-                        .message('  于未知时间宕机/离线，建议手动查询')
+                        msg.message(f'- {tunnel.name}\n')
+                        .message(f'   ID: {tunnel_uuid}\n')
+                        .message(f'   于未知时间宕机/离线，建议手动查询\n')
                     )
                 else:
                     msg = (
-                        msg.message(f'- {tunnel.name} ({tunnel_uuid})\n')
+                        msg.message(f'- {tunnel.name}\n')
+                        .message(f'   ID: {tunnel_uuid}\n')
                         .message(
-                            f'   离线时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)}')
-                        .message(f'   当前状态: ⛔ 宕机 DOWN\n')
+                            f'   离线时间: {TimeUtils.get_datetime_strftime_in_tz(tunnel.conns_inactive_at, self.timezone_name)}\n')
                     )
+
+                msg = msg.message(self._get_status_string(tunnel.status))
             msg = msg.message(f'\n当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
@@ -185,7 +204,6 @@ class NotificationSender:
                 logger.debug(f'active_tunnel_has_degraded: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
-                msg = msg.message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
 
             msg = msg.message(f'\n当前时间: {curr_time}')
 
@@ -203,7 +221,6 @@ class NotificationSender:
                 logger.debug(f'active_tunnel_has_active: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
-                msg = msg.message(f'   当前状态: ✅ 正常 HEALTHY\n')
             msg = msg.message(f'\n当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
@@ -214,13 +231,12 @@ class NotificationSender:
         logger.debug(f'active_tunnel_has_conn_changed is called {curr_time}')
 
         for umo in umo_to_tunnels:
-            msg = MessageChain().message('❓ 监测到一个或多个 Tunnel 的 连接数/Replica 数据有变化\n')
+            msg = MessageChain().message('❗ 监测到一个或多个 Tunnel 的 连接数/Replica 数据有变化\n')
             for tunnel_uuid in umo_to_tunnels[umo]:
                 tunnel = tunnels[tunnel_uuid]
                 logger.debug(f'active_tunnel_has_conn_changed: UUID {tunnel_uuid}')
 
                 msg = self._append_message_chain_for_active_tunnel_info(tunnel, msg)
-                msg = msg.message(f'   当前状态: {self._get_status_string(tunnel.status)}\n')
             msg = msg.message(f'\n当前时间: {curr_time}')
 
             await self.send_func(umo, msg)
@@ -232,7 +248,7 @@ class NotificationSender:
                 # 特殊处理尚未获取到信息的
                 logger.debug(f'passive_append_tunnel_listing: tunnel {i} is uninitialized')
 
-                temp.append(Comp.Plain(f'- {i.name} ({i.id})\n   暂无信息\n\u200b'))
+                temp.append(Comp.Plain(f'- {i.name}\n   ID: {i.id}\n   暂无信息\n\u200b'))
                 continue
 
             logger.debug(f'passive_append_tunnel_listing: tunnel {i}')
