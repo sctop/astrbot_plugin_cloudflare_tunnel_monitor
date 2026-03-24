@@ -678,13 +678,13 @@ class MyPlugin(Star):
             )
 
             msg.append(Comp.Plain('📋 以下是 UMO -> Tunnel UUID 信息\n\u200b'))
-            for (umo, tunnels) in self.notification_manager.umo_to_tunnel:
+            for (umo, tunnels) in self.notification_manager.umo_to_tunnel.items():
                 msg.append(Comp.Plain(f'- {umo}\n\u200b'))
                 for tunnel in tunnels:
                     msg.append(Comp.Plain(f'\u200b   - {tunnel}\n\u200b'))
 
             msg.append(Comp.Plain('📋 以下是 Tunnel UUID -> UMO 信息\n\u200b'))
-            for (tunnel, umos) in self.notification_manager.tunnel_to_umo:
+            for (tunnel, umos) in self.notification_manager.tunnel_to_umo.items():
                 msg.append(Comp.Plain(f'- {tunnel}\n'))
                 for umo in umos:
                     msg.append(Comp.Plain(f'\u200b   - {umo}\n\u200b'))
