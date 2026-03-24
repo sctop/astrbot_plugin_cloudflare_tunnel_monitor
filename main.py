@@ -18,10 +18,9 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from cloudflare import Cloudflare, DefaultHttpxClient, RateLimitError, APIError
 from cloudflare.types.shared.cloudflare_tunnel import CloudflareTunnel
 
-from utils import FileUtils
 from .exceptions import TunnelAlreadyAddedException, TunnelAlreadyRemovedException, TunnelNotFoundException, \
     CloudFlareAPI429Exception, CloudFlareAPIRequestError
-from .utils import TunnelStatusUtils, TimeUtils
+from .utils import TunnelStatusUtils, TimeUtils, FileUtils
 
 
 class TunnelStatusModel(pydantic.BaseModel):
