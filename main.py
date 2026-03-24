@@ -672,10 +672,11 @@ class MyPlugin(Star):
             curr_tunnels = [self.notification_manager.tunnel_status_cache[i] for i in curr_list]
 
             msg_lines = [
-                f'@{event.get_sender_id()}',
                 '🔍 以下是正在监测的 Tunnels 信息'
             ]
             msg_lines.extend(self.notification_sender.passive_append_tunnel_listing(curr_tunnels))
+
+            msg_lines.append('')
             msg_lines.append(
                 f'📦缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time, self.config.get("time_timezone"))}'
             )
@@ -694,7 +695,6 @@ class MyPlugin(Star):
             self.__check_has_inited()
 
             msg_lines = [
-                f'@{event.get_sender_id()}',
                 '🔍 以下是全局正在监测的 Tunnels 信息'
             ]
             msg_lines.extend(
@@ -702,18 +702,21 @@ class MyPlugin(Star):
                     list(self.notification_manager.tunnel_status_cache.values())
                 )
             )
+            msg_lines.append('')
 
             msg_lines.append('📋 以下是 UMO -> Tunnel UUID 信息')
             for (umo, tunnels) in self.notification_manager.umo_to_tunnel.items():
                 msg_lines.append(f'- {umo}')
                 for tunnel in tunnels:
                     msg_lines.append(f'   - {tunnel}')
+            msg_lines.append('')
 
             msg_lines.append('📋 以下是 Tunnel UUID -> UMO 信息')
             for (tunnel, umos) in self.notification_manager.tunnel_to_umo.items():
                 msg_lines.append(f'- {tunnel}')
                 for umo in umos:
                     msg_lines.append(f'   - {umo}')
+            msg_lines.append('')
 
             msg_lines.append(
                 f'📦缓存更新时间: {TimeUtils.get_datetime_strftime_in_tz(self.notification_manager.last_update_time, self.config.get("time_timezone"))}'
@@ -737,10 +740,11 @@ class MyPlugin(Star):
             curr_time = self.notification_sender.get_current_time()
 
             msg_lines = [
-                f'@{event.get_sender_id()}',
                 '🔍 以下是账号中所有可用于添加的 Tunnels'
             ]
             msg_lines.extend(self.notification_sender.passive_append_tunnel_listing(all_tunnels))
+
+            msg_lines.append('')
             msg_lines.append(f'🕙当前时间: {curr_time}')
 
             yield event.plain_result("\n".join(msg_lines))
