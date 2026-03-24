@@ -613,6 +613,8 @@ class MyPlugin(Star):
             yield event.plain_result(f'✅ 添加 `{name}` 成功！')
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("remove")
@@ -624,6 +626,8 @@ class MyPlugin(Star):
             yield event.plain_result(f'✅ 移除 `{name}` 成功！')
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @cft.command("list")
     async def list(self, event: AstrMessageEvent):
@@ -644,6 +648,8 @@ class MyPlugin(Star):
             await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @cft.command("list_all_tunnels")
     async def list_all(self, event: AstrMessageEvent):
@@ -676,6 +682,8 @@ class MyPlugin(Star):
             await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @cft.command("list_all_tunnels_api")
     async def list_api_all(self, event: AstrMessageEvent):
@@ -694,6 +702,8 @@ class MyPlugin(Star):
             await self.send_message_callback(event.unified_msg_origin, msg)
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("clear")
@@ -706,6 +716,8 @@ class MyPlugin(Star):
             yield event.plain_result(f'✅ 清空当前 `{event.unified_msg_origin}` 的所有监控任务成功！')
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("force_update")
@@ -718,6 +730,8 @@ class MyPlugin(Star):
             yield event.plain_result(f'✅ 强制调用更新函数完成！')
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("reset")
@@ -730,6 +744,8 @@ class MyPlugin(Star):
             yield event.plain_result(f'✅ 重置所有数据完成！')
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("remove_umo")
@@ -741,6 +757,8 @@ class MyPlugin(Star):
             yield event.plain_result(f'✅ 移除指定 `{target_umo}` 完成！')
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("remove_tunnel")
@@ -752,6 +770,8 @@ class MyPlugin(Star):
             yield event.plain_result(f'✅ 移除 Tunnel `{target_tunnel}` 的监控任务完成！')
         except Exception as e:
             yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     async def send_message_callback(self, umo: str, message_chain: MessageChain):
         for i in range(10):
