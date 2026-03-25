@@ -21,14 +21,14 @@ class TunnelNotFoundException(Exception):
         return "TunnelNotFoundException"
 
 # CLIENT/USER SIDE 用户端
-class CloudFlareAPI429Exception(Exception):
+class CloudflareAPI429Exception(Exception):
     def __str__(self):
-        return "CloudFlareAPI429Exception"
+        return "CloudflareAPI429Exception"
 
 # CLIENT/USER SIDE 用户端
-class CloudFlareAPIRequestError(Exception):
+class CloudflareAPIRequestError(Exception):
     def __str__(self):
-        return "CloudFlareAPIRequestError"
+        return "CloudflareAPIRequestError"
 
 
 # SERVER/REMOTE SIDE 远程端

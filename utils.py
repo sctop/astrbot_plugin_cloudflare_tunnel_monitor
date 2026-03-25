@@ -2,7 +2,6 @@ import datetime
 import json
 from typing import Dict, List, Any
 from zoneinfo import ZoneInfo
-from _pydatetime import tzinfo
 
 
 class TunnelStatusUtils:

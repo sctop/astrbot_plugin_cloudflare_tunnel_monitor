@@ -19,7 +19,7 @@ from cloudflare import Cloudflare, DefaultHttpxClient, RateLimitError, APIError
 from cloudflare.types.shared.cloudflare_tunnel import CloudflareTunnel
 
 from .exceptions import TunnelAlreadyAddedException, TunnelAlreadyRemovedException, TunnelNotFoundException, \
-    CloudFlareAPI429Exception, CloudFlareAPIRequestError
+    CloudflareAPI429Exception, CloudflareAPIRequestError
 from .utils import TunnelStatusUtils, TimeUtils, FileUtils
 
 
@@ -148,7 +148,7 @@ class NotificationSender:
             for tunnel_uuid in umo_to_tunnels[umo]:
                 msg_lines.append(f'- {tunnel_uuid}')
 
-            msg_lines.append('如以上情况并非您所为，请立即登录您的 CloudFlare 账号查看！')
+            msg_lines.append('如以上情况并非您所为，请立即登录您的 Cloudflare 账号查看！')
             msg_lines.append('')
             msg_lines.append(f'🕙当前时间: {curr_time}')
 
@@ -299,7 +299,7 @@ class NotificationManager:
                 temp = self.cf_client.zero_trust.tunnels.list(account_id=self.account_id)
             except RateLimitError:
                 logger.warning(f'无法 list tunnels : 429 Rate Limit Error')
-                raise CloudFlareAPI429Exception
+                raise CloudflareAPI429Exception
             except APIError as e:
                 logger.warning(f'无法 list tunnels : APIError for {e}')
                 pass
@@ -307,7 +307,7 @@ class NotificationManager:
                 return temp
 
         logger.error('Unable to list all tunnels.')
-        raise CloudFlareAPIRequestError
+        raise CloudflareAPIRequestError
 
     def _init_relation(self):
         """ 从配置文件中生成 umo <-> tunnel 关系 """
@@ -469,7 +469,7 @@ class NotificationManager:
 
             if tunnel_data is None:
                 # 暂时无法创建对应的 name -> uuid mapping
-                raise CloudFlareAPI429Exception
+                raise CloudflareAPI429Exception
 
             if tunnel not in tunnel_data[1]:
                 raise TunnelNotFoundException
@@ -489,7 +489,7 @@ class NotificationManager:
                     return tunnel
             else:
                 # 前面已经检查过了，所以行进到这里的话只能抛429了
-                raise CloudFlareAPI429Exception
+                raise CloudflareAPI429Exception
 
     async def get_cached_tunnel_status(self, tunnel: str) -> TunnelStatusModel:
         async with self.shared_lock:
@@ -504,17 +504,17 @@ class NotificationManager:
         if self._polling_is_429[0]:
             if time.time() - self._polling_is_429[1] <= 300:
                 # 5 minute blocking
-                raise CloudFlareAPI429Exception
+                raise CloudflareAPI429Exception
             else:
                 self._polling_is_429 = (False, 0.0)
 
         async with self.shared_lock:
             try:
                 all_tunnels = self._list_all_tunnels()
-            except CloudFlareAPI429Exception:
+            except CloudflareAPI429Exception:
                 self._polling_is_429 = (True, time.time())
                 raise
-            except CloudFlareAPIRequestError:
+            except CloudflareAPIRequestError:
                 raise
 
             # 先检查有没有tunnel已经被移除掉的
@@ -571,12 +571,12 @@ class NotificationManager:
                 try:
                     logger.info("正在更新与发送 Tunnel 状态……")
                     await self.update_and_send_tunnel_status()
-                except CloudFlareAPI429Exception:
+                except CloudflareAPI429Exception:
                     logger.error(
-                        f"触发 CloudFlare API 429 速率限制，当前时间 {TimeUtils.get_current_strftime_utc()}")
+                        f"触发 Cloudflare API 429 速率限制，当前时间 {TimeUtils.get_current_strftime_utc()}")
                     await asyncio.sleep(310)  # 等待 300 + 10 秒
-                except CloudFlareAPIRequestError:
-                    logger.warning(f"CloudFlare API 请求失败，等待 10 秒后重试")
+                except CloudflareAPIRequestError:
+                    logger.warning(f"Cloudflare API 请求失败，等待 10 秒后重试")
                     await asyncio.sleep(10)
                     continue
 
@@ -593,8 +593,8 @@ class NotificationManager:
         return datetime.datetime.fromtimestamp(self._polling_last_run, datetime.UTC)
 
 
-@register("astrbot_plugin_cloudflare_tunnel_monitor", "sctop",
-          "一个基本算是自用的 CloudFlare Tunnel 存活状态的监测插件", "1.0.0")
+@register("astrbot_plugin_Cloudflare_tunnel_monitor", "sctop",
+          "一个通过 Cloudflare API 轮询 Cloudflare Tunnel 存活状态的监测插件", "1.0.0")
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context, config)
@@ -631,7 +631,7 @@ class MyPlugin(Star):
 
     @filter.command_group("cft")
     async def cft(self):
-        """CloudFlare Tunnels (CFT) 监测插件的命令组"""
+        """Cloudflare Tunnels (CFT) 监测插件的命令组"""
         pass
 
     @filter.permission_type(filter.PermissionType.ADMIN)
