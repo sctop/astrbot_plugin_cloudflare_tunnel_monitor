@@ -9,13 +9,14 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 from collections import OrderedDict
 
+import httpx
 import pydantic
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
-from cloudflare import Cloudflare, DefaultHttpxClient, RateLimitError, APIError
+from cloudflare import AsyncCloudflare, RateLimitError, APIError
 from cloudflare.types.shared.cloudflare_tunnel import CloudflareTunnel
 
 from .exceptions import TunnelAlreadyAddedException, TunnelAlreadyRemovedException, TunnelNotFoundException, \
@@ -259,7 +260,7 @@ class NotificationSender:
 
 
 class NotificationManager:
-    def __init__(self, cf_client: Cloudflare, account_id: str, basepath: str, polling_time: int,
+    def __init__(self, cf_client: AsyncCloudflare, account_id: str, basepath: str, polling_time: int,
                  sender: NotificationSender):
         self.cf_client = cf_client
         self.account_id = account_id
@@ -291,12 +292,12 @@ class NotificationManager:
         with open(self.db_path[1], "w", encoding="utf-8") as f:
             json.dump(self.ignored_umo, f, indent=2, ensure_ascii=False)
 
-    def _list_all_tunnels(self):
+    async def _list_all_tunnels(self):
         logger.debug('_list_all_tunnels is called')
         for i in range(5):
             try:
                 logger.debug(f'_list_all_tunnels ({i}) calls CF API')
-                temp = self.cf_client.zero_trust.tunnels.list(account_id=self.account_id)
+                temp = (await self.cf_client.zero_trust.tunnels.list(account_id=self.account_id)).result
             except RateLimitError:
                 logger.warning(f'无法 list tunnels : 429 Rate Limit Error')
                 raise CloudflareAPI429Exception
@@ -330,7 +331,7 @@ class NotificationManager:
 
     async def add_relation(self, umo: str, tunnel: str):
         async with self.shared_lock:
-            tunnel_uuid = self.get_tunnel_uuid(tunnel)
+            tunnel_uuid = await self.get_tunnel_uuid(tunnel)
 
             if umo not in self.umo_to_tunnel:
                 self.umo_to_tunnel[umo] = []
@@ -349,7 +350,7 @@ class NotificationManager:
 
     async def remove_relation(self, umo: str, tunnel: str):
         async with self.shared_lock:
-            tunnel_uuid = self.get_tunnel_uuid(tunnel)
+            tunnel_uuid = await self.get_tunnel_uuid(tunnel)
 
             # 首先检查这个 umo 和 tunnel 是有数据的（能够访问）
             if umo not in self.umo_to_tunnel and tunnel_uuid not in self.tunnel_to_umo and \
@@ -377,7 +378,7 @@ class NotificationManager:
         if not has_acquired_lock:
             await self.shared_lock.acquire()
 
-        tunnel_uuid = self.get_tunnel_uuid(tunnel)
+        tunnel_uuid = await self.get_tunnel_uuid(tunnel)
         temp = await self.remove_tunnel_by_uuid(tunnel_uuid, True)
 
         self._save_notification_data()
@@ -443,8 +444,8 @@ class NotificationManager:
 
             self._save_notification_data()
 
-    def get_all_tunnel_ids(self) -> List[Dict[str, str]]:
-        result = self._list_all_tunnels()
+    async def get_all_tunnel_ids(self) -> List[Dict[str, str]]:
+        result = await self._list_all_tunnels()
 
         uuid_to_name = {}
         name_to_uuid = {}
@@ -455,17 +456,17 @@ class NotificationManager:
 
         return [uuid_to_name, name_to_uuid]
 
-    def get_tunnel_uuid(self, tunnel: str) -> str:
-        def get_tunnel_data():
+    async def get_tunnel_uuid(self, tunnel: str) -> str:
+        async def get_tunnel_data():
             if not self._polling_is_429[0]:
-                return self.get_all_tunnel_ids()
+                return await self.get_all_tunnel_ids()
             else:
                 return None
 
         try:
             UUID(tunnel)
         except Exception:
-            tunnel_data = get_tunnel_data()
+            tunnel_data = await get_tunnel_data()
 
             if tunnel_data is None:
                 # 暂时无法创建对应的 name -> uuid mapping
@@ -480,7 +481,7 @@ class NotificationManager:
                 # 是已知的 tunnel
                 return tunnel
 
-            tunnel_data = get_tunnel_data()
+            tunnel_data = await get_tunnel_data()
 
             if tunnel_data is not None:
                 if tunnel not in tunnel_data[0]:
@@ -493,7 +494,7 @@ class NotificationManager:
 
     async def get_cached_tunnel_status(self, tunnel: str) -> TunnelStatusModel:
         async with self.shared_lock:
-            tunnel_uuid = self.get_tunnel_uuid(tunnel)
+            tunnel_uuid = await self.get_tunnel_uuid(tunnel)
 
             if tunnel_uuid not in self.tunnel_status_cache:
                 raise TunnelNotFoundException
@@ -510,7 +511,7 @@ class NotificationManager:
 
         async with self.shared_lock:
             try:
-                all_tunnels = self._list_all_tunnels()
+                all_tunnels = await self._list_all_tunnels()
             except CloudflareAPI429Exception:
                 self._polling_is_429 = (True, time.time())
                 raise
@@ -614,10 +615,10 @@ class MyPlugin(Star):
         self.has_initialized = True
 
         if self.config.get('http_proxy') != '':
-            self.cf_client = Cloudflare(api_token=self.config.get('api_token'),
-                                        http_client=DefaultHttpxClient(proxy=self.config.get('http_proxy')))
+            self.cf_client = AsyncCloudflare(api_token=self.config.get('api_token'),
+                                             http_client=httpx.AsyncClient(proxy=self.config.get('http_proxy')))
         else:
-            self.cf_client = Cloudflare(api_token=self.config.get('api_token'))
+            self.cf_client = AsyncCloudflare(api_token=self.config.get('api_token'))
 
         self.notification_sender = NotificationSender(self.send_message_callback, self.config.get('time_timezone'))
         self.notification_manager = NotificationManager(self.cf_client, self.config.get('account_id'),
@@ -768,7 +769,7 @@ class MyPlugin(Star):
             self.__check_has_inited()
 
             all_tunnels = [TunnelStatusModel.create_from_tunnel_entry(i)
-                           for i in self.notification_manager._list_all_tunnels()]
+                           for i in await self.notification_manager._list_all_tunnels()]
             curr_time = self.notification_sender.get_current_time()
 
             msg_lines = [
