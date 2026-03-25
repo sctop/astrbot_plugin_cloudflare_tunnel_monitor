@@ -697,8 +697,8 @@ class MyPlugin(Star):
             event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @cft.command("delete")
-    async def remove_tunnel(self, event: AstrMessageEvent, name: str):
+    @cft.command("remove")
+    async def remove(self, event: AstrMessageEvent, name: str):
         try:
             self.__check_has_inited()
 
