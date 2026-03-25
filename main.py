@@ -4,6 +4,7 @@ import json
 import os
 import datetime
 import time
+from pathlib import Path
 from typing import Dict, List, Literal, Optional, Callable, Awaitable
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -260,7 +261,7 @@ class NotificationSender:
 
 
 class NotificationManager:
-    def __init__(self, cf_client: AsyncCloudflare, account_id: str, basepath: str, polling_time: int,
+    def __init__(self, cf_client: AsyncCloudflare, account_id: str, basepath: Path, polling_time: int,
                  sender: NotificationSender):
         self.cf_client = cf_client
         self.account_id = account_id
@@ -268,8 +269,8 @@ class NotificationManager:
         self.polling_time = polling_time
         self.sender = sender
 
-        self.db_path = [os.path.join(self.basepath, 'notification_db.json'),
-                        os.path.join(self.basepath, 'ignored_umo.json')]
+        self.db_path = [self.basepath.joinpath('notification_db.json'),
+                        self.basepath.joinpath('ignored_umo.json')]
         self.umo_to_tunnel: Dict[str, List[str]] = {}  # config
         self.ignored_umo: List[str] = []
 
@@ -602,7 +603,7 @@ class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context, config)
         self.config = config
-        self.data_basepath = os.path.join(StarTools.get_data_dir(self.name))
+        self.data_basepath = StarTools.get_data_dir(self.name)
 
         # create base folder for the plugin
         os.makedirs(self.data_basepath, exist_ok=True)

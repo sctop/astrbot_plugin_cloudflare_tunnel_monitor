@@ -1,5 +1,7 @@
 import datetime
 import json
+from os import PathLike
+from pathlib import Path
 from typing import Dict, List, Any
 from zoneinfo import ZoneInfo
 
@@ -92,8 +94,10 @@ class TimeUtils:
 
 class FileUtils:
     @staticmethod
-    def load_json_with_default(filepath: str, default: Any) -> Any:
+    def load_json_with_default(filepath: Path, default: Any) -> Any:
         try:
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+
             with open(filepath, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except FileNotFoundError:
