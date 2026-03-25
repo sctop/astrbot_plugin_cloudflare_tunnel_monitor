@@ -649,6 +649,7 @@ class MyPlugin(Star):
 
     @filter.command_group("cft")
     async def cft(self):
+        """CloudFlare Tunnels (CFT) 监测插件的命令组"""
         pass
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -685,7 +686,8 @@ class MyPlugin(Star):
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("add")
-    async def add_tunnel(self, event: AstrMessageEvent, name: str):
+    async def add(self, event: AstrMessageEvent, name: str):
+        """向当前对话中新增一个要主动监控的 Tunnel"""
         try:
             self.__check_has_inited()
 
@@ -699,6 +701,7 @@ class MyPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("remove")
     async def remove(self, event: AstrMessageEvent, name: str):
+        """移除当前对话中一个主动监控的 Tunnel"""
         try:
             self.__check_has_inited()
 
@@ -711,6 +714,7 @@ class MyPlugin(Star):
 
     @cft.command("list")
     async def list(self, event: AstrMessageEvent):
+        """列出当前对话中所有主动监测的 Tunnel"""
         try:
             self.__check_has_inited()
 
@@ -735,8 +739,8 @@ class MyPlugin(Star):
             event.stop_event()
 
     @cft.command("list_all_tunnels")
-    async def list_all(self, event: AstrMessageEvent):
-        """这里指的是列出所有正在监控的 Tunnels"""
+    async def list_all_tunnels(self, event: AstrMessageEvent):
+        """列出所有正在监控的 Tunnels (不止当前对话)"""
         try:
             self.__check_has_inited()
 
@@ -777,7 +781,7 @@ class MyPlugin(Star):
 
     @cft.command("list_all_tunnels_api")
     async def list_api_all(self, event: AstrMessageEvent):
-        """这里指的是列出整个 API Key 下面都可以用于监测的 Tunnels"""
+        """列出整个 API Token/Account ID 下面都可以用于监测的 Tunnels"""
         try:
             self.__check_has_inited()
 
@@ -816,7 +820,7 @@ class MyPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("force_update")
     async def force_update(self, event: AstrMessageEvent):
-        """强制调用更新函数"""
+        """跳过轮询时间，直接强制更新"""
         try:
             self.__check_has_inited()
 
@@ -830,7 +834,7 @@ class MyPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("reset")
     async def reset(self, event: AstrMessageEvent):
-        """将所有聊天的所有tunnel监听任务都给爆了"""
+        """重置数据，将所有聊天的所有tunnel监听任务都给爆了"""
         try:
             self.__check_has_inited()
 
@@ -844,6 +848,7 @@ class MyPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("remove_umo")
     async def remove_umo(self, event: AstrMessageEvent, target_umo: str):
+        """移除特定 umo 的所有 Tunnel 监控任务及其所有关联"""
         try:
             self.__check_has_inited()
 
@@ -857,6 +862,7 @@ class MyPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("remove_tunnel")
     async def remove_tunnel(self, event: AstrMessageEvent, target_tunnel: str):
+        """移除特定 Tunnel 的主动监测任务及其所有 umo 的关联"""
         try:
             self.__check_has_inited()
 
