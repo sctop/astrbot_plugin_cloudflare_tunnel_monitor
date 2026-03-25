@@ -361,18 +361,18 @@ class NotificationManager:
             tunnel_uuid = self.get_tunnel_uuid(tunnel)
 
             # 首先检查这个 umo 和 tunnel 是有数据的（能够访问）
-            if umo not in self.umo_to_tunnel and tunnel_uuid not in self.tunnel_to_umo and tunnel_uuid not in self.notification_status and tunnel_uuid not in self.tunnel_status_cache:
+            if umo not in self.umo_to_tunnel and tunnel_uuid not in self.tunnel_to_umo and \
+                    tunnel_uuid not in self.notification_status and tunnel_uuid not in self.tunnel_status_cache:
                 raise TunnelAlreadyRemovedException
             # 然后检查 umo 和 tunnel 各自存不存在
-            if umo not in self.tunnel_to_umo[tunnel_uuid] and umo not in self.umo_to_tunnel[
-                tunnel_uuid] and umo not in \
-                    self.notification_status[tunnel_uuid]:
+            if umo not in self.tunnel_to_umo[tunnel_uuid] and tunnel_uuid not in self.umo_to_tunnel[umo] and \
+                    umo not in self.notification_status[tunnel_uuid]:
                 raise TunnelAlreadyRemovedException
 
-            if umo in self.umo_to_tunnel[tunnel_uuid]:
-                self.umo_to_tunnel[tunnel_uuid].remove(umo)
-            if tunnel_uuid in self.tunnel_to_umo[umo]:
-                self.tunnel_to_umo[umo].remove(tunnel_uuid)
+            if tunnel_uuid in self.umo_to_tunnel[umo]:
+                self.umo_to_tunnel[umo].remove(tunnel_uuid)
+            if umo in self.tunnel_to_umo[tunnel_uuid]:
+                self.tunnel_to_umo[tunnel_uuid].remove(umo)
             if tunnel_uuid in self.notification_status:
                 if umo in self.notification_status[tunnel_uuid]:
                     del self.notification_status[tunnel_uuid][umo]
@@ -408,7 +408,7 @@ class NotificationManager:
 
         umos = self.tunnel_to_umo.pop(tunnel_uuid, [])
         for umo in umos:
-            self.umo_to_tunnel[tunnel_uuid].remove(umo)
+            self.umo_to_tunnel[umo].remove(tunnel_uuid)
 
         del self.tunnel_status_cache[tunnel_uuid]
         del self.notification_status[tunnel_uuid]
