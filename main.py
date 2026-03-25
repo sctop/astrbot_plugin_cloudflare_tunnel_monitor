@@ -12,10 +12,9 @@ from collections import OrderedDict
 import httpx
 import pydantic
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger, AstrBotConfig
 from astrbot.core.message.message_event_result import MessageChain
-from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from cloudflare import AsyncCloudflare, RateLimitError, APIError
 from cloudflare.types.shared.cloudflare_tunnel import CloudflareTunnel
 
@@ -600,7 +599,7 @@ class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context, config)
         self.config = config
-        self.data_basepath = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
+        self.data_basepath = os.path.join(StarTools.get_data_dir(self.name))
 
         # create base folder for the plugin
         os.makedirs(self.data_basepath, exist_ok=True)
