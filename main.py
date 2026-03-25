@@ -342,6 +342,8 @@ class NotificationManager:
                 self.umo_to_tunnel[umo] = []
             if tunnel_uuid not in self.tunnel_to_umo:
                 self.tunnel_to_umo[tunnel_uuid] = []
+            if tunnel_uuid not in self.tunnel_status_cache:
+                self.tunnel_status_cache[tunnel_uuid] = TunnelStatusModel.get_default_values(tunnel_uuid)
             if tunnel_uuid not in self.notification_status:
                 self.notification_status[tunnel_uuid] = {}
 
@@ -349,7 +351,6 @@ class NotificationManager:
                 self.umo_to_tunnel[umo].append(tunnel_uuid)
                 self.tunnel_to_umo[tunnel_uuid].append(umo)
 
-                self.tunnel_status_cache[tunnel_uuid] = TunnelStatusModel.get_default_values(tunnel_uuid)
                 self.notification_status[tunnel_uuid][umo] = TunnelStatusModel.get_default_values(tunnel_uuid)
             else:
                 raise TunnelAlreadyAddedException
