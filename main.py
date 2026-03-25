@@ -440,6 +440,7 @@ class NotificationManager:
             self.tunnel_to_umo = {}
             self.tunnel_status_cache = OrderedDict()
             self.notification_status = {}
+            self.ignored_umo = []
             self._save_notification_data()
 
             self.terminate_task()
@@ -834,7 +835,7 @@ class MyPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command("reset")
     async def reset(self, event: AstrMessageEvent):
-        """重置数据，将所有聊天的所有tunnel监听任务都给爆了"""
+        """重置所有数据，将所有聊天的所有 tunnel 监听任务和各聊天的开启/关闭通知状态都给爆了"""
         try:
             self.__check_has_inited()
 
