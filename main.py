@@ -380,10 +380,9 @@ class NotificationManager:
             # 最后删掉不要的
             if len(self.tunnel_to_umo[umo]) == 0:
                 del self.umo_to_tunnel[umo]
+                del self.tunnel_to_umo[tunnel_uuid]
                 del self.tunnel_status_cache[tunnel_uuid]
                 del self.notification_status[tunnel_uuid]
-            if len(self.umo_to_tunnel[tunnel_uuid]) == 0:
-                del self.tunnel_to_umo[tunnel_uuid]
 
             self._save_notification_data()
 
