@@ -329,7 +329,7 @@ class NotificationManager:
 
         self._polling_task = asyncio.create_task(self.polling_task_func())
         self._polling_is_429 = (False, 0.0)
-        self._polling_last_run = 0
+        self._polling_last_run = 0.0
 
     async def add_relation(self, umo: str, tunnel: str):
         async with self.shared_lock:
