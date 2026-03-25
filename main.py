@@ -541,7 +541,7 @@ class NotificationManager:
             deleted_pairs = {}
             if len(deleted_uuid) > 0:
                 deleted_pairs = TunnelStatusUtils.pair_umo_and_tunnelid_by_tunnel_ids(self.tunnel_to_umo, deleted_uuid,
-                                                                             self.ignored_umo)
+                                                                                      self.ignored_umo)
 
                 for i in deleted_uuid:
                     await self.remove_tunnel(i, True)
@@ -580,8 +580,6 @@ class NotificationManager:
                                                                   self.ignored_umo),
             new_tunnels
         )
-
-
 
         self._polling_last_run = time.time()
 
@@ -699,7 +697,7 @@ class MyPlugin(Star):
             event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @cft.command("remove")
+    @cft.command("delete")
     async def remove_tunnel(self, event: AstrMessageEvent, name: str):
         try:
             self.__check_has_inited()
