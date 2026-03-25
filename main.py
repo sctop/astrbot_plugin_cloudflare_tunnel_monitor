@@ -273,10 +273,9 @@ class NotificationManager:
         self.umo_to_tunnel: Dict[str, List[str]] = {}  # config
         self.ignored_umo: List[str] = []
 
-        self.shared_lock = asyncio.Lock()
+        self.shared_lock = None
 
         self._load_notification_data()
-        self._init_relation()
 
     def _load_notification_data(self):
         logger.info('加载既有 notification_db.json')
@@ -310,8 +309,11 @@ class NotificationManager:
         logger.error('Unable to list all tunnels.')
         raise CloudflareAPIRequestError
 
-    def _init_relation(self):
+    async def init_relation(self):
         """ 从配置文件中生成 umo <-> tunnel 关系 """
+        # 将 Lock 改在 async 函数中创建，防止潜在的 RuntimeError 错误
+        self.shared_lock = asyncio.Lock()
+
         self.tunnel_to_umo: Dict[str, List[str]] = {}
         self.tunnel_status_cache: Dict[str, TunnelStatusModel] = OrderedDict()
         for (umo, tunnels) in self.umo_to_tunnel.items():
@@ -625,6 +627,7 @@ class MyPlugin(Star):
                                                         self.data_basepath,
                                                         self.config.get('polling_time'),
                                                         sender=self.notification_sender)
+        await self.notification_manager.init_relation()
 
     def __check_has_inited(self):
         if not self.has_initialized:
