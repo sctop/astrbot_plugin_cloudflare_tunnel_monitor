@@ -61,8 +61,9 @@ class TunnelStatusModel(pydantic.BaseModel):
                    created_at=entry.created_at, conns_active_at=entry.conns_active_at,
                    conns_inactive_at=entry.conns_inactive_at,
                    conns_nums=len(entry.connections),
-                   conns_edge_dc=list(set([j.colo_name for j in entry.connections])),
-                   replica_nums=len(list(set([j.client_id for j in entry.connections]))))
+                   conns_edge_dc=list({j.colo_name for j in entry.connections}),
+                   replica_nums=len(list({j.client_id for j in entry.connections}))
+                   )
 
 
 class NotificationSender:

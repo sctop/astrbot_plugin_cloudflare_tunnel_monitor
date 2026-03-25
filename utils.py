@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 class TunnelStatusUtils:
     @staticmethod
-    def calc_status_difference(old: dict, new: dict) -> dict[str, list["TunnelStatusModel"]]:
+    def calc_status_difference(old: dict, new: dict) -> dict[str, list[str]]:
         # status change (healthy, degraded, down)
         status_difference = {
             "to_healthy": [],
@@ -42,8 +42,8 @@ class TunnelStatusUtils:
 
     @staticmethod
     def find_deleted_tunnels(old: list, new: list) -> list:
-        old_uuids = set([i.id for i in old])
-        new_uuids = set([i.id for i in new])
+        old_uuids = {i.id for i in old}
+        new_uuids = {i.id for i in new}
         diff = old_uuids - new_uuids
 
         return list(diff)
