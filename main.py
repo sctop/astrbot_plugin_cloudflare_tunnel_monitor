@@ -598,7 +598,7 @@ class NotificationManager:
 
 
 @register("astrbot_plugin_Cloudflare_tunnel_monitor", "sctop",
-          "一个通过 Cloudflare API 轮询 Cloudflare Tunnel 存活状态的监测插件", "1.0.0")
+          "一个通过 Cloudflare API 轮询 Cloudflare Tunnel 存活状态的监测插件", "1.1.0")
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context, config)
