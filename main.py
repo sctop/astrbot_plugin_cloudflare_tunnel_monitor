@@ -313,7 +313,6 @@ class NotificationManager:
         """ 从配置文件中生成 umo <-> tunnel 关系 """
         self.tunnel_to_umo: Dict[str, List[str]] = {}
         self.tunnel_status_cache: Dict[str, TunnelStatusModel] = OrderedDict()
-        self.notification_status: Dict[str, Dict[str, TunnelStatusModel]] = {}
         for (umo, tunnels) in self.umo_to_tunnel.items():
             for tunnel in tunnels:
                 # tunnel -> umo
@@ -324,11 +323,6 @@ class NotificationManager:
                 # tunnel status
                 if tunnel not in self.tunnel_status_cache:
                     self.tunnel_status_cache[tunnel] = TunnelStatusModel.get_default_values(tunnel)
-
-                # notification status
-                if tunnel not in self.notification_status:
-                    self.notification_status[tunnel] = {}
-                self.notification_status[tunnel][umo] = TunnelStatusModel.get_default_values(tunnel)
 
         self._polling_task = asyncio.create_task(self.polling_task_func())
         self._polling_is_429 = (False, 0.0)
@@ -344,14 +338,10 @@ class NotificationManager:
                 self.tunnel_to_umo[tunnel_uuid] = []
             if tunnel_uuid not in self.tunnel_status_cache:
                 self.tunnel_status_cache[tunnel_uuid] = TunnelStatusModel.get_default_values(tunnel_uuid)
-            if tunnel_uuid not in self.notification_status:
-                self.notification_status[tunnel_uuid] = {}
 
             if tunnel_uuid not in self.umo_to_tunnel[umo] and umo not in self.tunnel_to_umo[tunnel_uuid]:
                 self.umo_to_tunnel[umo].append(tunnel_uuid)
                 self.tunnel_to_umo[tunnel_uuid].append(umo)
-
-                self.notification_status[tunnel_uuid][umo] = TunnelStatusModel.get_default_values(tunnel_uuid)
             else:
                 raise TunnelAlreadyAddedException
 
@@ -363,27 +353,22 @@ class NotificationManager:
 
             # 首先检查这个 umo 和 tunnel 是有数据的（能够访问）
             if umo not in self.umo_to_tunnel and tunnel_uuid not in self.tunnel_to_umo and \
-                    tunnel_uuid not in self.notification_status and tunnel_uuid not in self.tunnel_status_cache:
+                    tunnel_uuid not in self.tunnel_status_cache:
                 raise TunnelAlreadyRemovedException
             # 然后检查 umo 和 tunnel 各自存不存在
-            if umo not in self.tunnel_to_umo[tunnel_uuid] and tunnel_uuid not in self.umo_to_tunnel[umo] and \
-                    umo not in self.notification_status[tunnel_uuid]:
+            if umo not in self.tunnel_to_umo[tunnel_uuid] and tunnel_uuid not in self.umo_to_tunnel[umo]:
                 raise TunnelAlreadyRemovedException
 
             if tunnel_uuid in self.umo_to_tunnel[umo]:
                 self.umo_to_tunnel[umo].remove(tunnel_uuid)
             if umo in self.tunnel_to_umo[tunnel_uuid]:
                 self.tunnel_to_umo[tunnel_uuid].remove(umo)
-            if tunnel_uuid in self.notification_status:
-                if umo in self.notification_status[tunnel_uuid]:
-                    del self.notification_status[tunnel_uuid][umo]
 
             # 最后删掉不要的
             if len(self.tunnel_to_umo[umo]) == 0:
                 del self.umo_to_tunnel[umo]
                 del self.tunnel_to_umo[tunnel_uuid]
                 del self.tunnel_status_cache[tunnel_uuid]
-                del self.notification_status[tunnel_uuid]
 
             self._save_notification_data()
 
@@ -411,7 +396,6 @@ class NotificationManager:
             self.umo_to_tunnel[umo].remove(tunnel_uuid)
 
         del self.tunnel_status_cache[tunnel_uuid]
-        del self.notification_status[tunnel_uuid]
 
         return umos
 
@@ -422,12 +406,10 @@ class NotificationManager:
             tunnels = self.umo_to_tunnel.pop(umo, [])
             for tunnel in tunnels:
                 self.tunnel_to_umo[tunnel].remove(umo)
-                del self.notification_status[tunnel][umo]
 
                 if len(self.tunnel_to_umo[tunnel]) == 0:
                     del self.tunnel_to_umo[tunnel]
                     del self.tunnel_status_cache[tunnel]
-                    del self.notification_status[tunnel]
 
             self._save_notification_data()
 
@@ -439,7 +421,6 @@ class NotificationManager:
             self.umo_to_tunnel = {}
             self.tunnel_to_umo = {}
             self.tunnel_status_cache = OrderedDict()
-            self.notification_status = {}
             self.ignored_umo = []
             self._save_notification_data()
 
