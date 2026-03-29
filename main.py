@@ -589,8 +589,18 @@ class NotificationManager:
         except asyncio.CancelledError:
             logger.info("已取消更新轮询任务")
 
+    async def reload_polling_task(self):
+        async with self.shared_lock:
+            self.terminate_task()
+
+            self._polling_task = asyncio.create_task(self.polling_task_func())
+            self._polling_last_run = 0.0
+
     def terminate_task(self):
-        self._polling_task.cancel()
+        try:
+            self._polling_task.cancel()
+        except asyncio.CancelledError:
+            pass
 
     @property
     def last_update_time(self) -> datetime.datetime:
@@ -598,7 +608,7 @@ class NotificationManager:
 
 
 @register("astrbot_plugin_Cloudflare_tunnel_monitor", "sctop",
-          "一个通过 Cloudflare API 轮询 Cloudflare Tunnel 存活状态的监测插件", "1.1.0")
+          "一个通过 Cloudflare API 轮询 Cloudflare Tunnel 存活状态的监测插件", "1.2.0")
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context, config)
@@ -638,6 +648,21 @@ class MyPlugin(Star):
     async def cft(self):
         """Cloudflare Tunnels (CFT) 监测插件的命令组"""
         pass
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cft.command('reload')
+    async def cft_reload(self, event: AstrMessageEvent,):
+        """重启插件的关键asyncio任务"""
+        try:
+            self.__check_has_inited()
+
+            await self.notification_manager.reload_polling_task()
+
+            yield event.plain_result(f'✅ 已成功重启插件的关键 asyncio 任务！')
+        except Exception as e:
+            yield event.plain_result(f'🚨 执行失败！请稍后重试。\n失败原因：{e}')
+        finally:
+            event.stop_event()
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cft.command('on')
