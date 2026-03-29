@@ -583,6 +583,10 @@ class NotificationManager:
                     logger.warning(f"Cloudflare API 请求失败，等待 10 秒后重试")
                     await asyncio.sleep(10)
                     continue
+                except BaseException as e:
+                    logger.error(f'未知错误，等待 10 秒后重试: {e}')
+                    await asyncio.sleep(10)
+                    continue
 
                 logger.info("已完成更新与发送 Tunnel 状态")
                 await asyncio.sleep(self.polling_time)
